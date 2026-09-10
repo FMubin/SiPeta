@@ -1191,6 +1191,13 @@ app.get('/api/export/excel', (req, res) => {
   res.status(200).send(buffer);
 });
 
+app.get('*', (req, res) => {
+  if (!req.path.startsWith('/api')) {
+    return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  }
+  res.status(404).json({ success: false, message: 'Endpoint API tidak ditemukan.' });
+});
+
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`=======================================================`);
