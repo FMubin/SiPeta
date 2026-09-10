@@ -1,7 +1,7 @@
 {
   "name": "peta-receiving-batching",
   "version": "1.0.0",
-  "description": "Sistem Receiving dan Batching Peta & SLS",
+  "description": "Shi-Peta - BPS Kabupaten Pandeglang",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

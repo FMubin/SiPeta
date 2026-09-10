@@ -1201,7 +1201,7 @@ app.get('*', (req, res) => {
 if (!process.env.VERCEL) {
   app.listen(PORT, () => {
     console.log(`=======================================================`);
-    console.log(`🚀 Sistem Receiving & Scanning Peta BPS (Bulk Entry Active)!`);
+    console.log(`🚀 Shi-Peta - BPS Kabupaten Pandeglang`);
     console.log(`URL: http://localhost:${PORT}`);
     console.log(`=======================================================`);
   });
