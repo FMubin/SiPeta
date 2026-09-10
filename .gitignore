@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Vercel & Environments
+.vercel
+.env
+.env.local
+
+# Logs & System Files
+*.log
+.DS_Store
+Thumbs.db

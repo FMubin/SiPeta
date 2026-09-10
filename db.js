@@ -1,0 +1,169 @@
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+
+const isVercel = Boolean(process.env.VERCEL);
+const LOCAL_DB_DIR = path.join(__dirname, 'data');
+const LOCAL_DB_FILE = path.join(LOCAL_DB_DIR, 'db.json');
+
+const DB_DIR = isVercel ? os.tmpdir() : LOCAL_DB_DIR;
+const DB_FILE = isVercel ? path.join(DB_DIR, 'db.json') : LOCAL_DB_FILE;
+const MASTER_UTP_FILE = path.join(LOCAL_DB_DIR, 'master_utp.json');
+
+// Kode Jenis Perubahan SLS (1 - 9)
+const kodePerubahanSls = [
+  { kode: '1', label: '1 - Pemekaran SLS' },
+  { kode: '2', label: '2 - Penggabungan SLS' },
+  { kode: '3', label: '3 - Perubahan Jenis SLS' },
+  { kode: '4', label: '4 - Perubahan Nama SLS' },
+  { kode: '5', label: '5 - Perubahan Kode SLS' },
+  { kode: '6', label: '6 - Pemekaran Sub SLS' },
+  { kode: '7', label: '7 - Penggabungan Sub SLS' },
+  { kode: '8', label: '8 - Perubahan Kode Sub SLS' },
+  { kode: '9', label: '9 - Perubahan Muatan Sub SLS' }
+];
+
+function getMasterUtp() {
+  if (fs.existsSync(MASTER_UTP_FILE)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(MASTER_UTP_FILE, 'utf-8'));
+      data.kode_perubahan_sls = kodePerubahanSls;
+      return data;
+    } catch (e) {
+      console.error('Error reading master_utp.json', e);
+    }
+  }
+  return {
+    kecamatan: [],
+    desa: [],
+    sls: [],
+    ppl: [],
+    kode_perubahan_sls: kodePerubahanSls
+  };
+}
+
+const defaultUsers = [
+  { id: 'usr-superadmin', username: 'superadmin', password: 'superadmin', nama: 'Super Administrator BPS', role: 'superadmin', assigned_kec: [] },
+  { id: 'usr-admin', username: 'admin', password: 'admin', nama: 'Administrator BPS', role: 'admin', assigned_kec: [] },
+  { id: 'usr-entry1', username: 'entry1', password: '123', nama: 'Petugas Entry 1', role: 'entry', assigned_kec: [] },
+  { id: 'usr-scan1', username: 'scan1', password: '123', nama: 'Petugas Scan 1', role: 'scan', assigned_kec: [] },
+  { id: 'usr-nana', username: 'nana', password: '123', nama: 'Nana Sumarna', role: 'penerima', assigned_kec: [], assigned_surveys: ['srv-sensus-14utp'] },
+  { id: 'usr-juniar', username: 'juniar', password: '123', nama: 'Juniar', role: 'penerima', assigned_kec: [], assigned_surveys: ['srv-sensus-14utp'] }
+];
+
+const defaultSurveys = [
+  {
+    id: 'srv-sensus-14utp',
+    nama_kegiatan: 'Sensus Wilkerstat BPS Kabupaten Pandeglang',
+    jenis: 'sensus',
+    tahun: '2026',
+    status: 'aktif',
+    sample_sls: []
+  }
+];
+
+function initDB() {
+  if (!fs.existsSync(DB_DIR)) {
+    try {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    } catch (e) {}
+  }
+  if (!fs.existsSync(DB_FILE)) {
+    let initialData = null;
+    if (fs.existsSync(LOCAL_DB_FILE)) {
+      try {
+        initialData = JSON.parse(fs.readFileSync(LOCAL_DB_FILE, 'utf-8'));
+      } catch (e) {}
+    }
+    if (!initialData) {
+      initialData = {
+        users: defaultUsers,
+        receivings: [],
+        surveys: defaultSurveys
+      };
+    }
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2), 'utf-8');
+    } catch (e) {
+      console.error('Error initializing DB_FILE:', e);
+    }
+  }
+}
+
+function readDB() {
+  initDB();
+  try {
+    const content = fs.readFileSync(DB_FILE, 'utf-8');
+    const db = JSON.parse(content);
+    db.master = getMasterUtp();
+    
+    if (!db.users || db.users.length === 0) {
+      db.users = defaultUsers;
+    }
+
+    // Ensure superadmin, nana, and juniar accounts exist
+    if (!db.users.some(u => u.username === 'superadmin')) {
+      db.users.unshift(defaultUsers[0]);
+    }
+    if (!db.users.some(u => u.username === 'nana')) {
+      db.users.push(defaultUsers[4]);
+    }
+    if (!db.users.some(u => u.username === 'juniar')) {
+      db.users.push(defaultUsers[5]);
+    }
+
+    db.users.forEach(u => {
+      u.username = String(u.username || '').trim();
+      u.password = String(u.password || '').trim();
+      if (!Array.isArray(u.assigned_kec)) {
+        u.assigned_kec = [];
+      }
+      if (!Array.isArray(u.assigned_surveys)) {
+        u.assigned_surveys = [];
+      }
+    });
+
+    if (!Array.isArray(db.surveys) || db.surveys.length === 0) {
+      db.surveys = defaultSurveys;
+    }
+
+    (db.receivings || []).forEach(item => {
+      if (item.status_diterima === undefined) item.status_diterima = 'Ya';
+      if (item.tgl_diterima === undefined) item.tgl_diterima = item.tgl_penerimaan || '';
+      if (item.petugas_penerima === undefined) item.petugas_penerima = item.petugas_receiving || '';
+      if (item.status_scan === undefined) item.status_scan = 'Tidak';
+      if (item.petugas_scan === undefined) item.petugas_scan = '';
+      if (item.tgl_scan === undefined) item.tgl_scan = '';
+      if (item.petugas_receiving === undefined) item.petugas_receiving = '';
+      if (item.survey_id === undefined) item.survey_id = 'srv-sensus-14utp';
+    });
+
+    return db;
+  } catch (err) {
+    console.error('Error reading DB, re-initializing...', err);
+    initDB();
+    const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
+    db.master = getMasterUtp();
+    db.users = defaultUsers;
+    db.surveys = defaultSurveys;
+    return db;
+  }
+}
+
+function writeDB(data) {
+  if (!fs.existsSync(DB_DIR)) {
+    fs.mkdirSync(DB_DIR, { recursive: true });
+  }
+  const toSave = {
+    users: data.users || defaultUsers,
+    receivings: data.receivings || [],
+    surveys: data.surveys || defaultSurveys
+  };
+  fs.writeFileSync(DB_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
+}
+
+module.exports = {
+  readDB,
+  writeDB,
+  getMasterUtp
+};
