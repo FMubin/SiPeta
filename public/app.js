@@ -2174,12 +2174,6 @@ function renderReceivingsTable() {
             <div class="font-semibold text-xs">${desaName}</div>
             <div class="text-[10px] text-slate-400">${kecName}</div>
           </td>
-          <td class="p-3 text-center">
-            ${statusDiterimaBadge}
-          </td>
-          <td class="p-3 text-slate-700 font-semibold text-xs">
-            ${item.petugas_penerima || item.petugas_receiving || '-'}
-          </td>
           <td class="p-3 text-center font-mono font-bold text-slate-800">
             ${item.no_bangunan_terbesar || 0}
           </td>
