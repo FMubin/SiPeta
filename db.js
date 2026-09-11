@@ -1,6 +1,22 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { createClient } = require('@supabase/supabase-js');
+
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY;
+
+const isSupabaseEnabled = Boolean(supabaseUrl && supabaseKey);
+let supabase = null;
+
+if (isSupabaseEnabled) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey);
+    console.log('✅ Supabase Client Connected:', supabaseUrl);
+  } catch (err) {
+    console.error('❌ Failed to initialize Supabase client:', err);
+  }
+}
 
 const isVercel = Boolean(process.env.VERCEL);
 const LOCAL_DB_DIR = path.join(__dirname, 'data');
@@ -62,7 +78,7 @@ const defaultSurveys = [
   }
 ];
 
-function initDB() {
+function initDBLocal() {
   if (!fs.existsSync(DB_DIR)) {
     try {
       fs.mkdirSync(DB_DIR, { recursive: true });
@@ -90,8 +106,72 @@ function initDB() {
   }
 }
 
-function readDB() {
-  initDB();
+async function readDB() {
+  if (isSupabaseEnabled && supabase) {
+    try {
+      const [usersRes, surveysRes, receivingsRes] = await Promise.all([
+        supabase.from('users').select('*'),
+        supabase.from('surveys').select('*'),
+        supabase.from('receivings').select('*').limit(10000)
+      ]);
+
+      let users = usersRes.data || [];
+      let surveys = surveysRes.data || [];
+      let receivings = receivingsRes.data || [];
+
+      if (users.length === 0) {
+        users = [...defaultUsers];
+        await supabase.from('users').upsert(defaultUsers);
+      }
+      if (surveys.length === 0) {
+        surveys = [...defaultSurveys];
+        await supabase.from('surveys').upsert(defaultSurveys);
+      }
+
+      if (!users.some(u => u.username === 'superadmin')) {
+        users.unshift(defaultUsers[0]);
+        await supabase.from('users').upsert([defaultUsers[0]]);
+      }
+      if (!users.some(u => u.username === 'nana')) {
+        users.push(defaultUsers[4]);
+        await supabase.from('users').upsert([defaultUsers[4]]);
+      }
+      if (!users.some(u => u.username === 'juniar')) {
+        users.push(defaultUsers[5]);
+        await supabase.from('users').upsert([defaultUsers[5]]);
+      }
+
+      users.forEach(u => {
+        u.username = String(u.username || '').trim();
+        u.password = String(u.password || '').trim();
+        if (!Array.isArray(u.assigned_kec)) u.assigned_kec = [];
+        if (!Array.isArray(u.assigned_surveys)) u.assigned_surveys = [];
+      });
+
+      receivings.forEach(item => {
+        if (item.status_diterima === undefined) item.status_diterima = 'Belum Diterima';
+        if (item.tgl_diterima === undefined) item.tgl_diterima = item.tgl_penerimaan || '';
+        if (item.petugas_penerima === undefined) item.petugas_penerima = item.petugas_receiving || '';
+        if (item.status_scan === undefined) item.status_scan = 'Tidak';
+        if (item.petugas_scan === undefined) item.petugas_scan = '';
+        if (item.tgl_scan === undefined) item.tgl_scan = '';
+        if (item.petugas_receiving === undefined) item.petugas_receiving = '';
+        if (item.survey_id === undefined) item.survey_id = 'srv-sensus-14utp';
+      });
+
+      return {
+        users,
+        surveys,
+        receivings,
+        master: getMasterUtp()
+      };
+    } catch (err) {
+      console.error('Error querying Supabase, falling back to local file storage:', err);
+    }
+  }
+
+  // Local JSON fallback
+  initDBLocal();
   try {
     const content = fs.readFileSync(DB_FILE, 'utf-8');
     const db = JSON.parse(content);
@@ -101,7 +181,6 @@ function readDB() {
       db.users = defaultUsers;
     }
 
-    // Ensure superadmin, nana, and juniar accounts exist
     if (!db.users.some(u => u.username === 'superadmin')) {
       db.users.unshift(defaultUsers[0]);
     }
@@ -115,12 +194,8 @@ function readDB() {
     db.users.forEach(u => {
       u.username = String(u.username || '').trim();
       u.password = String(u.password || '').trim();
-      if (!Array.isArray(u.assigned_kec)) {
-        u.assigned_kec = [];
-      }
-      if (!Array.isArray(u.assigned_surveys)) {
-        u.assigned_surveys = [];
-      }
+      if (!Array.isArray(u.assigned_kec)) u.assigned_kec = [];
+      if (!Array.isArray(u.assigned_surveys)) u.assigned_surveys = [];
     });
 
     if (!Array.isArray(db.surveys) || db.surveys.length === 0) {
@@ -128,7 +203,7 @@ function readDB() {
     }
 
     (db.receivings || []).forEach(item => {
-      if (item.status_diterima === undefined) item.status_diterima = 'Ya';
+      if (item.status_diterima === undefined) item.status_diterima = 'Belum Diterima';
       if (item.tgl_diterima === undefined) item.tgl_diterima = item.tgl_penerimaan || '';
       if (item.petugas_penerima === undefined) item.petugas_penerima = item.petugas_receiving || '';
       if (item.status_scan === undefined) item.status_scan = 'Tidak';
@@ -140,8 +215,8 @@ function readDB() {
 
     return db;
   } catch (err) {
-    console.error('Error reading DB, re-initializing...', err);
-    initDB();
+    console.error('Error reading local DB, re-initializing...', err);
+    initDBLocal();
     const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
     db.master = getMasterUtp();
     db.users = defaultUsers;
@@ -150,20 +225,74 @@ function readDB() {
   }
 }
 
-function writeDB(data) {
-  if (!fs.existsSync(DB_DIR)) {
-    fs.mkdirSync(DB_DIR, { recursive: true });
+async function writeDB(data) {
+  if (isSupabaseEnabled && supabase) {
+    try {
+      if (data.users && data.users.length > 0) {
+        await supabase.from('users').upsert(data.users, { onConflict: 'id' });
+      }
+      if (data.surveys && data.surveys.length > 0) {
+        await supabase.from('surveys').upsert(data.surveys, { onConflict: 'id' });
+      }
+      if (data.receivings && data.receivings.length > 0) {
+        await supabase.from('receivings').upsert(data.receivings, { onConflict: 'id' });
+      }
+    } catch (err) {
+      console.error('Error writing to Supabase:', err);
+    }
   }
-  const toSave = {
-    users: data.users || defaultUsers,
-    receivings: data.receivings || [],
-    surveys: data.surveys || defaultSurveys
-  };
-  fs.writeFileSync(DB_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
+
+  try {
+    if (!fs.existsSync(DB_DIR)) {
+      fs.mkdirSync(DB_DIR, { recursive: true });
+    }
+    const toSave = {
+      users: data.users || defaultUsers,
+      receivings: data.receivings || [],
+      surveys: data.surveys || defaultSurveys
+    };
+    fs.writeFileSync(DB_FILE, JSON.stringify(toSave, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('Error writing local DB_FILE:', e);
+  }
+}
+
+async function deleteUserDB(id) {
+  if (isSupabaseEnabled && supabase) {
+    try {
+      await supabase.from('users').delete().eq('id', id);
+    } catch (e) {
+      console.error('Error deleting user from Supabase:', e);
+    }
+  }
+}
+
+async function deleteSurveyDB(id) {
+  if (isSupabaseEnabled && supabase) {
+    try {
+      await supabase.from('surveys').delete().eq('id', id);
+    } catch (e) {
+      console.error('Error deleting survey from Supabase:', e);
+    }
+  }
+}
+
+async function deleteReceivingDB(id) {
+  if (isSupabaseEnabled && supabase) {
+    try {
+      await supabase.from('receivings').delete().eq('id', id);
+    } catch (e) {
+      console.error('Error deleting receiving from Supabase:', e);
+    }
+  }
 }
 
 module.exports = {
   readDB,
   writeDB,
-  getMasterUtp
+  deleteUserDB,
+  deleteSurveyDB,
+  deleteReceivingDB,
+  getMasterUtp,
+  isSupabaseEnabled
 };

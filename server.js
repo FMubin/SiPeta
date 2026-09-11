@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { readDB, writeDB, getMasterUtp } = require('./db');
+const { readDB, writeDB, deleteUserDB, deleteSurveyDB, deleteReceivingDB, getMasterUtp } = require('./db');
 const XLSX = require('xlsx');
 
 const app = express();
@@ -13,7 +13,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 0. AUTH & USER MANAGEMENT ENDPOINTS
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ success: false, message: 'Username dan Password wajib diisi.' });
@@ -22,7 +22,7 @@ app.post('/api/auth/login', (req, res) => {
   const cleanUser = String(username).trim().toLowerCase();
   const cleanPass = String(password).trim();
 
-  const db = readDB();
+  const db = await readDB();
   const user = (db.users || []).find(u => 
     String(u.username).trim().toLowerCase() === cleanUser && 
     String(u.password).trim() === cleanPass
@@ -43,8 +43,8 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ success: true, message: `Selamat datang, ${user.nama}!`, user: safeUser });
 });
 
-app.get('/api/users', (req, res) => {
-  const db = readDB();
+app.get('/api/users', async (req, res) => {
+  const db = await readDB();
   const safeUsers = (db.users || []).map(u => ({
     id: u.id,
     username: u.username,
@@ -56,19 +56,18 @@ app.get('/api/users', (req, res) => {
   res.json({ success: true, data: safeUsers });
 });
 
-app.post('/api/users', (req, res) => {
+app.post('/api/users', async (req, res) => {
   const { username, password, nama, role, assigned_kec, assigned_surveys, requester_role } = req.body;
   if (!username || !password || !nama || !role) {
     return res.status(400).json({ success: false, message: 'Semua field (Username, Password, Nama, Role) wajib diisi.' });
   }
 
-  // Role hierarchy restriction: admin cannot create admin or superadmin
   let cleanRole = role.toLowerCase().trim();
   if (requester_role === 'admin' && (cleanRole === 'admin' || cleanRole === 'superadmin')) {
     return res.status(403).json({ success: false, message: 'Admin hanya diperbolehkan membuat akun Petugas Entry dan Petugas Scan.' });
   }
 
-  const db = readDB();
+  const db = await readDB();
   if ((db.users || []).some(u => u.username.toLowerCase() === username.trim().toLowerCase())) {
     return res.status(400).json({ success: false, message: 'Username sudah digunakan oleh user lain.' });
   }
@@ -84,7 +83,7 @@ app.post('/api/users', (req, res) => {
   };
 
   db.users.push(newUser);
-  writeDB(db);
+  await writeDB(db);
 
   res.status(201).json({
     success: true,
@@ -93,8 +92,8 @@ app.post('/api/users', (req, res) => {
   });
 });
 
-app.put('/api/users/:id', (req, res) => {
-  const db = readDB();
+app.put('/api/users/:id', async (req, res) => {
+  const db = await readDB();
   const user = (db.users || []).find(u => u.id === req.params.id);
   if (!user) {
     return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
@@ -132,7 +131,7 @@ app.put('/api/users/:id', (req, res) => {
     user.assigned_surveys = assigned_surveys.map(String);
   }
 
-  writeDB(db);
+  await writeDB(db);
 
   res.json({
     success: true,
@@ -141,8 +140,8 @@ app.put('/api/users/:id', (req, res) => {
   });
 });
 
-app.put('/api/users/:id/allocation', (req, res) => {
-  const db = readDB();
+app.put('/api/users/:id/allocation', async (req, res) => {
+  const db = await readDB();
   const user = (db.users || []).find(u => u.id === req.params.id);
   if (!user) {
     return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
@@ -155,7 +154,7 @@ app.put('/api/users/:id/allocation', (req, res) => {
   if (Array.isArray(assigned_surveys)) {
     user.assigned_surveys = assigned_surveys.map(String);
   }
-  writeDB(db);
+  await writeDB(db);
 
   res.json({
     success: true,
@@ -164,8 +163,8 @@ app.put('/api/users/:id/allocation', (req, res) => {
   });
 });
 
-app.delete('/api/users/:id', (req, res) => {
-  const db = readDB();
+app.delete('/api/users/:id', async (req, res) => {
+  const db = await readDB();
   const index = (db.users || []).findIndex(u => u.id === req.params.id);
   if (index === -1) {
     return res.status(404).json({ success: false, message: 'User tidak ditemukan.' });
@@ -174,19 +173,21 @@ app.delete('/api/users/:id', (req, res) => {
     return res.status(400).json({ success: false, message: 'Akun Super Admin & Admin utama tidak dapat dihapus.' });
   }
 
+  const deletedId = db.users[index].id;
   db.users.splice(index, 1);
-  writeDB(db);
+  await deleteUserDB(deletedId);
+  await writeDB(db);
   res.json({ success: true, message: 'User berhasil dihapus.' });
 });
 
 // Import Bulk Users via JSON array
-app.post('/api/users/import', (req, res) => {
+app.post('/api/users/import', async (req, res) => {
   const { users: newUsers } = req.body;
   if (!newUsers || !Array.isArray(newUsers) || newUsers.length === 0) {
     return res.status(400).json({ success: false, message: 'Data petugas tidak boleh kosong.' });
   }
 
-  const db = readDB();
+  const db = await readDB();
   const existingUsernames = new Set((db.users || []).map(u => u.username.toLowerCase()));
 
   let importedCount = 0;
@@ -245,7 +246,7 @@ app.post('/api/users/import', (req, res) => {
     importedCount++;
   });
 
-  writeDB(db);
+  await writeDB(db);
 
   res.json({
     success: true,
@@ -256,7 +257,6 @@ app.post('/api/users/import', (req, res) => {
   });
 });
 
-// Download Excel Template for Importing Users
 app.get('/api/users/template', (req, res) => {
   const sampleData = [
     {
@@ -284,11 +284,11 @@ app.get('/api/users/template', (req, res) => {
 
   const worksheet = XLSX.utils.json_to_sheet(sampleData);
   worksheet['!cols'] = [
-    { wch: 22 }, // nama
-    { wch: 16 }, // username
-    { wch: 14 }, // password
-    { wch: 10 }, // role
-    { wch: 24 }  // assigned_kec
+    { wch: 22 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 10 },
+    { wch: 24 }
   ];
 
   const workbook = XLSX.utils.book_new();
@@ -328,15 +328,14 @@ app.get('/api/master', (req, res) => {
   });
 });
 
-// 2. GET SLS List (Filtered by desa_id, kec_id, search, and survey_id)
-app.get('/api/master/sls', (req, res) => {
-  const db = readDB();
+// 2. GET SLS List
+app.get('/api/master/sls', async (req, res) => {
+  const db = await readDB();
   const master = getMasterUtp();
   let list = master.sls || [];
 
   const { desa_id, kec_id, search, survey_id } = req.query;
 
-  // Filter by survey if survey_id is provided
   if (survey_id) {
     const surveyObj = (db.surveys || []).find(s => s.id === survey_id);
     if (surveyObj && surveyObj.jenis === 'survei' && Array.isArray(surveyObj.sample_sls) && surveyObj.sample_sls.length > 0) {
@@ -374,21 +373,21 @@ app.get('/api/master/sls', (req, res) => {
 });
 
 // 2b. MULTI-SURVEYS / KEGIATAN ENDPOINTS
-app.get('/api/surveys', (req, res) => {
-  const db = readDB();
+app.get('/api/surveys', async (req, res) => {
+  const db = await readDB();
   res.json({
     success: true,
     data: db.surveys || []
   });
 });
 
-app.post('/api/surveys', (req, res) => {
+app.post('/api/surveys', async (req, res) => {
   const { nama_kegiatan, jenis, tahun, status, sample_sls } = req.body;
   if (!nama_kegiatan) {
     return res.status(400).json({ success: false, message: 'Nama Kegiatan / Survei wajib diisi.' });
   }
 
-  const db = readDB();
+  const db = await readDB();
   const newId = 'srv-' + Date.now().toString().slice(-6);
   const newSurvey = {
     id: newId,
@@ -405,7 +404,7 @@ app.post('/api/surveys', (req, res) => {
   };
 
   db.surveys.push(newSurvey);
-  writeDB(db);
+  await writeDB(db);
 
   res.status(201).json({
     success: true,
@@ -414,8 +413,8 @@ app.post('/api/surveys', (req, res) => {
   });
 });
 
-app.put('/api/surveys/:id', (req, res) => {
-  const db = readDB();
+app.put('/api/surveys/:id', async (req, res) => {
+  const db = await readDB();
   const survey = (db.surveys || []).find(s => s.id === req.params.id);
   if (!survey) {
     return res.status(404).json({ success: false, message: 'Kegiatan tidak ditemukan.' });
@@ -427,7 +426,7 @@ app.put('/api/surveys/:id', (req, res) => {
   if (tahun) survey.tahun = String(tahun);
   if (status) survey.status = status;
 
-  writeDB(db);
+  await writeDB(db);
 
   res.json({
     success: true,
@@ -436,8 +435,8 @@ app.put('/api/surveys/:id', (req, res) => {
   });
 });
 
-app.post('/api/surveys/:id/upload-sample', (req, res) => {
-  const db = readDB();
+app.post('/api/surveys/:id/upload-sample', async (req, res) => {
+  const db = await readDB();
   const survey = (db.surveys || []).find(s => s.id === req.params.id);
   if (!survey) {
     return res.status(404).json({ success: false, message: 'Kegiatan tidak ditemukan.' });
@@ -448,7 +447,7 @@ app.post('/api/surveys/:id/upload-sample', (req, res) => {
     return res.status(400).json({ success: false, message: 'Data sampel SLS tidak valid.' });
   }
 
-  survey.jenis = 'survei'; // Auto set to survei when sample is uploaded
+  survey.jenis = 'survei';
   survey.sample_sls = sample_sls.map(item => {
     if (typeof item === 'object' && item !== null) {
       const cleanId = String(item.id_sls || '').trim();
@@ -472,7 +471,7 @@ app.post('/api/surveys/:id/upload-sample', (req, res) => {
     };
   }).filter(s => s.id_sls);
 
-  writeDB(db);
+  await writeDB(db);
 
   res.json({
     success: true,
@@ -481,8 +480,8 @@ app.post('/api/surveys/:id/upload-sample', (req, res) => {
   });
 });
 
-app.delete('/api/surveys/:id', (req, res) => {
-  const db = readDB();
+app.delete('/api/surveys/:id', async (req, res) => {
+  const db = await readDB();
   const index = (db.surveys || []).findIndex(s => s.id === req.params.id);
   if (index === -1) {
     return res.status(404).json({ success: false, message: 'Kegiatan tidak ditemukan.' });
@@ -491,9 +490,11 @@ app.delete('/api/surveys/:id', (req, res) => {
     return res.status(400).json({ success: false, message: 'Kegiatan Sensus Bawaan tidak dapat dihapus.' });
   }
 
+  const deletedId = db.surveys[index].id;
   const deletedName = db.surveys[index].nama_kegiatan;
   db.surveys.splice(index, 1);
-  writeDB(db);
+  await deleteSurveyDB(deletedId);
+  await writeDB(db);
 
   res.json({ success: true, message: `Kegiatan "${deletedName}" berhasil dihapus.` });
 });
@@ -531,13 +532,13 @@ app.get('/api/surveys/template', (req, res) => {
 
   const worksheet = XLSX.utils.json_to_sheet(sampleData);
   worksheet['!cols'] = [
-    { wch: 16 }, // Nama Kab
-    { wch: 12 }, // Kode Kec
-    { wch: 16 }, // Nama Kec
-    { wch: 14 }, // Kode Desa
-    { wch: 18 }, // Nama Desa
-    { wch: 22 }, // Kode SLS
-    { wch: 30 }  // Nama SLS
+    { wch: 16 },
+    { wch: 12 },
+    { wch: 16 },
+    { wch: 14 },
+    { wch: 18 },
+    { wch: 22 },
+    { wch: 30 }
   ];
 
   const workbook = XLSX.utils.book_new();
@@ -560,9 +561,9 @@ app.get('/api/master/sls/:id_sls', (req, res) => {
   res.json({ success: true, data: found });
 });
 
-// 4. GET Receivings (With Filters & Sorting)
-app.get('/api/receivings', (req, res) => {
-  const db = readDB();
+// 4. GET Receivings
+app.get('/api/receivings', async (req, res) => {
+  const db = await readDB();
   let list = db.receivings || [];
 
   const { kec_id, desa_id, perubahan_sls, perbaikan_batas, kondisi, kualitas_jaringan, status_scan, status_diterima, search, sort_by, survey_id } = req.query;
@@ -600,7 +601,7 @@ app.get('/api/receivings', (req, res) => {
     list = list.filter(item => item.perbaikan_batas === isPerbaikan);
   }
   if (perubahan_sls !== undefined && perubahan_sls !== '') {
-    const isPerubahan = perubahan_sls === 'true' || perubahan_sls === '1' || perubahan_sls === 'ya' || perubahan_sls === 'Ada';
+    const isPerubahan = perubahan_sls === 'true' || perubahan_sls === 'ya' || perubahan_sls === '1' || perubahan_sls === 'Ada';
     list = list.filter(item => item.perubahan_sls === isPerubahan);
   }
   if (status_scan) {
@@ -618,7 +619,6 @@ app.get('/api/receivings', (req, res) => {
     );
   }
 
-  // Sorting logic
   if (sort_by === 'sls_asc') {
     list.sort((a, b) => a.id_sls.localeCompare(b.id_sls, undefined, { numeric: true }));
   } else {
@@ -629,8 +629,8 @@ app.get('/api/receivings', (req, res) => {
 });
 
 // 5. POST Create Single Receiving Record
-app.post('/api/receivings', (req, res) => {
-  const db = readDB();
+app.post('/api/receivings', async (req, res) => {
+  const db = await readDB();
   const {
     no_peta,
     id_sls,
@@ -695,14 +695,14 @@ app.post('/api/receivings', (req, res) => {
   };
 
   db.receivings.unshift(newRecord);
-  writeDB(db);
+  await writeDB(db);
 
   res.status(201).json({ success: true, message: 'Penerimaan Peta berhasil dicatat.', data: newRecord });
 });
 
 // 5b. POST Bulk Create Receiving Records for 1 Desa
-app.post('/api/receivings/bulk', (req, res) => {
-  const db = readDB();
+app.post('/api/receivings/bulk', async (req, res) => {
+  const db = await readDB();
   const { items, petugas_receiving } = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -758,7 +758,7 @@ app.post('/api/receivings/bulk', (req, res) => {
     addedCount++;
   });
 
-  writeDB(db);
+  await writeDB(db);
 
   res.status(201).json({
     success: true,
@@ -768,8 +768,8 @@ app.post('/api/receivings/bulk', (req, res) => {
 });
 
 // 5b-2. POST Fast Penerimaan Physical Checklist (Role: Penerima)
-app.post('/api/receivings/penerima-bulk', (req, res) => {
-  const db = readDB();
+app.post('/api/receivings/penerima-bulk', async (req, res) => {
+  const db = await readDB();
   const { items } = req.body;
 
   if (!items || !Array.isArray(items) || items.length === 0) {
@@ -831,7 +831,7 @@ app.post('/api/receivings/penerima-bulk', (req, res) => {
     }
   });
 
-  writeDB(db);
+  await writeDB(db);
 
   res.json({
     success: true,
@@ -841,9 +841,9 @@ app.post('/api/receivings/penerima-bulk', (req, res) => {
   });
 });
 
-// 5c. PUT Update Full Receiving Record Details (Edit Isian)
-app.put('/api/receivings/:id', (req, res) => {
-  const db = readDB();
+// 5c. PUT Update Full Receiving Record Details
+app.put('/api/receivings/:id', async (req, res) => {
+  const db = await readDB();
   const { id } = req.params;
 
   const index = db.receivings.findIndex(r => r.id === id);
@@ -887,7 +887,7 @@ app.put('/api/receivings/:id', (req, res) => {
     record.kualitas_jaringan = (kualitas_jaringan === 'Kuat' || kualitas_jaringan === 'Sedang' || kualitas_jaringan === 'Lemah') ? kualitas_jaringan : 'Kuat';
   }
 
-  writeDB(db);
+  await writeDB(db);
 
   res.json({
     success: true,
@@ -897,8 +897,8 @@ app.put('/api/receivings/:id', (req, res) => {
 });
 
 // 6. PUT Update Scanning Status
-app.put('/api/receivings/:id/scan', (req, res) => {
-  const db = readDB();
+app.put('/api/receivings/:id/scan', async (req, res) => {
+  const db = await readDB();
   const { id } = req.params;
 
   const index = db.receivings.findIndex(r => r.id === id);
@@ -922,7 +922,7 @@ app.put('/api/receivings/:id/scan', (req, res) => {
     db.receivings[index].tgl_scan = '';
   }
 
-  writeDB(db);
+  await writeDB(db);
 
   res.json({
     success: true,
@@ -932,8 +932,8 @@ app.put('/api/receivings/:id/scan', (req, res) => {
 });
 
 // 7. DELETE Receiving Record
-app.delete('/api/receivings/:id', (req, res) => {
-  const db = readDB();
+app.delete('/api/receivings/:id', async (req, res) => {
+  const db = await readDB();
   const { id } = req.params;
 
   const index = db.receivings.findIndex(r => r.id === id);
@@ -941,88 +941,21 @@ app.delete('/api/receivings/:id', (req, res) => {
     return res.status(404).json({ success: false, message: 'Data receiving tidak ditemukan.' });
   }
 
+  const deletedId = db.receivings[index].id;
   db.receivings.splice(index, 1);
-  writeDB(db);
+  await deleteReceivingDB(deletedId);
+  await writeDB(db);
 
   res.json({ success: true, message: 'Data receiving berhasil dihapus.' });
 });
 
-// 5c. POST Bulk Update or Mark Received for Penerima Dokumen
-app.post('/api/receivings/penerima-bulk', (req, res) => {
-  const db = readDB();
-  const { items, tgl_diterima, petugas_penerima } = req.body;
-
-  if (!items || !Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ success: false, message: 'Pilih minimal satu data SLS untuk disimpan.' });
-  }
-
-  const cleanDate = tgl_diterima || new Date().toISOString().split('T')[0];
-  const cleanOfficer = petugas_penerima || 'Petugas Penerima';
-  let countUpdated = 0;
-  let countCreated = 0;
-
-  items.forEach(item => {
-    if (!item.id_sls) return;
-    const cleanSlsId = String(item.id_sls).trim();
-    const isDiterima = String(item.status_diterima) === 'Ya' || String(item.status_diterima) === 'ya' || String(item.status_diterima) === 'true';
-
-    let rec = db.receivings.find(r => String(r.id_sls).trim() === cleanSlsId);
-    if (rec) {
-      rec.status_diterima = isDiterima ? 'Ya' : 'Tidak';
-      if (isDiterima) {
-        rec.tgl_diterima = cleanDate;
-        rec.petugas_penerima = cleanOfficer;
-      }
-      countUpdated++;
-    } else if (isDiterima) {
-      const newId = 'REC-' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 1000);
-      const newRecord = {
-        id: newId,
-        no_peta: cleanSlsId,
-        id_sls: cleanSlsId,
-        nama_sls: (item.nama_sls || '').trim(),
-        id_kecamatan: String(item.id_kecamatan || (cleanSlsId.length >= 7 ? cleanSlsId.slice(0, 7) : '')),
-        id_desa: String(item.id_desa || (cleanSlsId.length >= 10 ? cleanSlsId.slice(0, 10) : '')),
-        status_diterima: 'Ya',
-        tgl_diterima: cleanDate,
-        petugas_penerima: cleanOfficer,
-        tgl_penerimaan: cleanDate,
-        kondisi: 'Baik',
-        ppl: '',
-        no_bangunan_terbesar: 0,
-        catatan: '',
-        perbaikan_batas: false,
-        perubahan_sls: false,
-        kode_jenis_perubahan_sls: '',
-        kualitas_jaringan: 'Kuat',
-        status_scan: 'Tidak',
-        petugas_scan: '',
-        petugas_receiving: cleanOfficer,
-        tgl_scan: '',
-        created_at: new Date().toISOString()
-      };
-      db.receivings.unshift(newRecord);
-      countCreated++;
-    }
-  });
-
-  writeDB(db);
-
-  res.status(200).json({
-    success: true,
-    message: `Berhasil memperbarui status penerimaan fisik ${countUpdated + countCreated} dokumen peta!`,
-    count_created: countCreated,
-    count_updated: countUpdated
-  });
-});
-
 // 8. GET Stats Dashboard
-app.get('/api/stats', (req, res) => {
-  const db = readDB();
+app.get('/api/stats', async (req, res) => {
+  const db = await readDB();
   const list = db.receivings || [];
 
   const totalPeta = list.length;
-  const totalDiterima = list.filter(r => (r.status_diterima || 'Ya') === 'Ya').length;
+  const totalDiterima = list.filter(r => (r.status_diterima || 'Belum Diterima') === 'Sudah Diterima' || r.status_diterima === 'Ya').length;
   const perubahanSls = list.filter(r => r.perubahan_sls).length;
   const perbaikanBatas = list.filter(r => r.perbaikan_batas).length;
   const kondisiRusak = list.filter(r => r.kondisi === 'Rusak').length;
@@ -1046,8 +979,8 @@ app.get('/api/stats', (req, res) => {
 });
 
 // 9. GET CSV Export
-app.get('/api/export/csv', (req, res) => {
-  const db = readDB();
+app.get('/api/export/csv', async (req, res) => {
+  const db = await readDB();
   let list = db.receivings || [];
 
   list.sort((a, b) => a.id_sls.localeCompare(b.id_sls, undefined, { numeric: true }));
@@ -1066,7 +999,7 @@ app.get('/api/export/csv', (req, res) => {
     `"${(item.nama_sls || '').replace(/"/g, '""')}"`,
     `"${item.id_kecamatan}"`,
     `"${item.id_desa}"`,
-    `"${item.status_diterima || 'Ya'}"`,
+    `"${item.status_diterima || 'Belum Diterima'}"`,
     `"${item.tgl_diterima || item.tgl_penerimaan || ''}"`,
     `"${(item.petugas_penerima || item.petugas_receiving || '').replace(/"/g, '""')}"`,
     `"${item.tgl_penerimaan}"`,
@@ -1092,8 +1025,8 @@ app.get('/api/export/csv', (req, res) => {
 });
 
 // 10. GET Excel Export (.xlsx)
-app.get('/api/export/excel', (req, res) => {
-  const db = readDB();
+app.get('/api/export/excel', async (req, res) => {
+  const db = await readDB();
   const master = getMasterUtp();
   let list = db.receivings || [];
 
@@ -1143,7 +1076,7 @@ app.get('/api/export/excel', (req, res) => {
     "Nama SLS": r.nama_sls || '',
     "Kecamatan": kecMap.get(String(r.id_kecamatan)) || r.id_kecamatan,
     "Desa / Kelurahan": desaMap.get(String(r.id_desa)) || r.id_desa,
-    "Status Diterima": r.status_diterima || 'Ya',
+    "Status Diterima": r.status_diterima || 'Belum Diterima',
     "Tgl Diterima": r.tgl_diterima || r.tgl_penerimaan || '',
     "Petugas Penerima": r.petugas_penerima || r.petugas_receiving || '',
     "Tgl Penerimaan / Entry": r.tgl_penerimaan || '',
@@ -1162,23 +1095,23 @@ app.get('/api/export/excel', (req, res) => {
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
   worksheet['!cols'] = [
-    { wch: 6 },  // No
-    { wch: 20 }, // No Peta
-    { wch: 18 }, // ID SLS
-    { wch: 25 }, // Nama SLS
-    { wch: 20 }, // Kecamatan
-    { wch: 20 }, // Desa
-    { wch: 15 }, // Tgl Penerimaan
-    { wch: 20 }, // PPL
-    { wch: 20 }, // No Bangunan Terbesar
-    { wch: 14 }, // Kondisi Peta
-    { wch: 16 }, // Perbaikan Batas
-    { wch: 25 }, // Perubahan SLS
-    { wch: 24 }, // Kualitas Jaringan Internet
-    { wch: 15 }, // Status Scanning
-    { wch: 18 }, // Petugas Scan
-    { wch: 18 }, // Petugas Receiving
-    { wch: 30 }  // Catatan
+    { wch: 6 },
+    { wch: 20 },
+    { wch: 18 },
+    { wch: 25 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 15 },
+    { wch: 20 },
+    { wch: 20 },
+    { wch: 14 },
+    { wch: 16 },
+    { wch: 25 },
+    { wch: 24 },
+    { wch: 15 },
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 30 }
   ];
 
   const workbook = XLSX.utils.book_new();
