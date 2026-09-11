@@ -2180,9 +2180,6 @@ function renderReceivingsTable() {
           <td class="p-3 text-slate-700 font-semibold text-xs">
             ${item.petugas_penerima || item.petugas_receiving || '-'}
           </td>
-          <td class="p-3 text-slate-700 font-medium text-xs">
-            ${item.ppl || '-'}
-          </td>
           <td class="p-3 text-center font-mono font-bold text-slate-800">
             ${item.no_bangunan_terbesar || 0}
           </td>
