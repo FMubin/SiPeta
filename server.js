@@ -960,21 +960,24 @@ app.delete('/api/receivings/:id', async (req, res) => {
 // 8. GET Stats Dashboard
 app.get('/api/stats', async (req, res) => {
   const db = await readDB();
+  const master = getMasterUtp();
   const list = db.receivings || [];
 
-  const totalPeta = list.length;
-  const totalDiterima = list.filter(r => (r.status_diterima || 'Belum Diterima') === 'Sudah Diterima' || r.status_diterima === 'Ya').length;
+  const totalTargetPeta = (master.sls || []).length;
+  const totalDiinput = list.length;
+  const totalDiterima = list.filter(r => r.status_diterima === 'Sudah Diterima' || r.status_diterima === 'Ya').length;
   const perubahanSls = list.filter(r => r.perubahan_sls).length;
   const perbaikanBatas = list.filter(r => r.perbaikan_batas).length;
   const kondisiRusak = list.filter(r => r.kondisi === 'Rusak').length;
   const kondisiHilang = list.filter(r => r.kondisi === 'Hilang').length;
   const totalScanned = list.filter(r => r.status_scan === 'Ya').length;
-  const totalUnscanned = list.filter(r => (r.status_scan || 'Tidak') === 'Tidak').length;
+  const totalUnscanned = Math.max(0, totalTargetPeta - totalScanned);
 
   res.json({
     success: true,
     data: {
-      total_peta: totalPeta,
+      total_peta: totalTargetPeta,
+      total_diinput: totalDiinput,
       total_diterima: totalDiterima,
       perubahan_sls: perubahanSls,
       perbaikan_batas: perbaikanBatas,

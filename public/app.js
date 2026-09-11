@@ -1407,28 +1407,43 @@ function calculateTotalPetaKecamatan() {
   return availKec.reduce((sum, k) => sum + (k.total_sls || 0), 0);
 }
 
-function renderStats() {
+function getActualReceivingsForUser() {
+  let list = state.receivings || [];
   const user = state.currentUser;
-  const isRestricted = (user && user.role !== 'admin' && user.role !== 'superadmin' && Array.isArray(user.assigned_kec) && user.assigned_kec.length > 0) || (state.activeSurveyId && state.activeSurveyId !== 'srv-sensus-14utp');
-  
-  let s = state.stats || {};
-  if (isRestricted || (state.activeSurveyId && state.surveys && state.surveys.some(srv => srv.id === state.activeSurveyId && srv.jenis === 'survei'))) {
-    const list = getFilteredReceivingsForUser();
-    s = {
-      total_peta: list.length,
-      total_diterima: list.filter(r => r.status_diterima !== 'Belum Diterima').length,
-      total_scanned: list.filter(r => (r.status_scan || 'Tidak') === 'Ya').length,
-      total_unscanned: list.filter(r => (r.status_scan || 'Tidak') !== 'Ya').length,
-      perubahan_sls: list.filter(r => r.perubahan_sls).length,
-      perbaikan_batas: list.filter(r => r.perbaikan_batas).length,
-      kondisi_rusak: list.filter(r => r.kondisi === 'Rusak').length,
-      kondisi_hilang: list.filter(r => r.kondisi === 'Hilang').length
-    };
+
+  // Filter by Active Survey if active survey is a survei type with sample_sls
+  if (state.activeSurveyId) {
+    const surveyObj = (state.surveys || []).find(s => s.id === state.activeSurveyId);
+    if (surveyObj && surveyObj.jenis === 'survei' && Array.isArray(surveyObj.sample_sls) && surveyObj.sample_sls.length > 0) {
+      const sampleSet = new Set(surveyObj.sample_sls.map(s => String(s.id_sls || s).trim()));
+      list = list.filter(item => sampleSet.has(String(item.id_sls).trim()));
+    }
   }
 
-  const totalPetaKec = calculateTotalPetaKecamatan();
+  if (user && user.role !== 'admin' && user.role !== 'superadmin' && Array.isArray(user.assigned_kec) && user.assigned_kec.length > 0) {
+    const assigned = user.assigned_kec.map(String);
+    list = list.filter(item => assigned.includes(String(item.id_kecamatan)));
+  }
 
-  if (elements.statPetaKecamatan) elements.statPetaKecamatan.textContent = totalPetaKec;
+  return list;
+}
+
+function renderStats() {
+  const actualList = getActualReceivingsForUser();
+  const totalTargetSLS = calculateTotalPetaKecamatan();
+  
+  const s = {
+    total_peta: totalTargetSLS,
+    total_diterima: actualList.filter(r => r.status_diterima === 'Sudah Diterima').length,
+    total_scanned: actualList.filter(r => (r.status_scan || 'Tidak') === 'Ya').length,
+    total_unscanned: Math.max(0, totalTargetSLS - actualList.filter(r => (r.status_scan || 'Tidak') === 'Ya').length),
+    perubahan_sls: actualList.filter(r => r.perubahan_sls).length,
+    perbaikan_batas: actualList.filter(r => r.perbaikan_batas).length,
+    kondisi_rusak: actualList.filter(r => r.kondisi === 'Rusak').length,
+    kondisi_hilang: actualList.filter(r => r.kondisi === 'Hilang').length
+  };
+
+  if (elements.statPetaKecamatan) elements.statPetaKecamatan.textContent = totalTargetSLS;
   if (elements.statPetaDiterima) elements.statPetaDiterima.textContent = s.total_diterima || 0;
   if (elements.statTotal) elements.statTotal.textContent = s.total_peta || 0;
   if (elements.statScanned) elements.statScanned.textContent = s.total_scanned || 0;
@@ -1447,17 +1462,17 @@ function renderStats() {
 }
 
 function renderDashboardUI() {
-  const list = getFilteredReceivingsForUser();
+  const actualList = getActualReceivingsForUser();
   const totalTargetSLS = calculateTotalPetaKecamatan();
-  const totalDiinput = list.length;
+  const totalDiinput = actualList.length;
   
   const recPct = totalTargetSLS > 0 ? ((totalDiinput / totalTargetSLS) * 100).toFixed(1) : 0;
   
-  const totalDiterima = list.filter(r => r.status_diterima !== 'Belum Diterima').length;
+  const totalDiterima = actualList.filter(r => r.status_diterima === 'Sudah Diterima').length;
   const ditPct = totalTargetSLS > 0 ? ((totalDiterima / totalTargetSLS) * 100).toFixed(1) : 0;
 
-  const totalScanned = list.filter(r => (r.status_scan || 'Tidak') === 'Ya').length;
-  const scanPct = totalDiinput > 0 ? ((totalScanned / totalDiinput) * 100).toFixed(1) : 0;
+  const totalScanned = actualList.filter(r => (r.status_scan || 'Tidak') === 'Ya').length;
+  const scanPct = totalTargetSLS > 0 ? ((totalScanned / totalTargetSLS) * 100).toFixed(1) : 0;
 
   const surveyObj = (state.surveys || []).find(s => s.id === state.activeSurveyId);
   const surveyName = surveyObj ? surveyObj.nama_kegiatan : 'Sensus Wilkerstat BPS Kabupaten Pandeglang';
@@ -1477,11 +1492,11 @@ function renderDashboardUI() {
   if (elements.dashScanPct) elements.dashScanPct.textContent = `${scanPct}% Scanned`;
   if (elements.dashScanBar) elements.dashScanBar.style.width = `${Math.min(scanPct, 100)}%`;
 
-  const totalPerubahan = list.filter(r => r.perubahan_sls).length;
-  const totalPerbaikan = list.filter(r => r.perbaikan_batas).length;
-  const totalRusak = list.filter(r => r.kondisi === 'Rusak').length;
-  const totalHilang = list.filter(r => r.kondisi === 'Hilang').length;
-  const totalBaik = list.filter(r => (r.kondisi || 'Baik') === 'Baik').length;
+  const totalPerubahan = actualList.filter(r => r.perubahan_sls).length;
+  const totalPerbaikan = actualList.filter(r => r.perbaikan_batas).length;
+  const totalRusak = actualList.filter(r => r.kondisi === 'Rusak').length;
+  const totalHilang = actualList.filter(r => r.kondisi === 'Hilang').length;
+  const totalBaik = actualList.filter(r => r.kondisi === 'Baik').length;
 
   if (elements.dashPerubahanSlsCount) elements.dashPerubahanSlsCount.textContent = totalPerubahan;
   if (elements.dashPerbaikanBatasCount) elements.dashPerbaikanBatasCount.textContent = totalPerbaikan;
@@ -1489,7 +1504,7 @@ function renderDashboardUI() {
   if (elements.dashHilangCount) elements.dashHilangCount.textContent = totalHilang;
 
   // Breakdown Kondisi Fisik Peta
-  if (elements.dashKondisiSummaryText) elements.dashKondisiSummaryText.textContent = `${totalDiinput} Peta Diterima`;
+  if (elements.dashKondisiSummaryText) elements.dashKondisiSummaryText.textContent = `${totalDiinput} Peta Diinput`;
   const baikPct = totalDiinput > 0 ? (totalBaik / totalDiinput * 100).toFixed(1) : 0;
   const rusakPct = totalDiinput > 0 ? (totalRusak / totalDiinput * 100).toFixed(1) : 0;
   const hilangPct = totalDiinput > 0 ? (totalHilang / totalDiinput * 100).toFixed(1) : 0;
@@ -1503,9 +1518,9 @@ function renderDashboardUI() {
   if (elements.valKondisiHilang) elements.valKondisiHilang.textContent = `${totalHilang} (${hilangPct}%)`;
 
   // Breakdown Sinyal/Jaringan Internet
-  const totalKuat = list.filter(r => (r.kualitas_jaringan || 'Kuat') === 'Kuat').length;
-  const totalSedang = list.filter(r => r.kualitas_jaringan === 'Sedang').length;
-  const totalLemah = list.filter(r => r.kualitas_jaringan === 'Lemah').length;
+  const totalKuat = actualList.filter(r => r.kualitas_jaringan === 'Kuat').length;
+  const totalSedang = actualList.filter(r => r.kualitas_jaringan === 'Sedang').length;
+  const totalLemah = actualList.filter(r => r.kualitas_jaringan === 'Lemah').length;
 
   const kuatPct = totalDiinput > 0 ? (totalKuat / totalDiinput * 100).toFixed(1) : 0;
   const sedangPct = totalDiinput > 0 ? (totalSedang / totalDiinput * 100).toFixed(1) : 0;
@@ -1521,24 +1536,21 @@ function renderDashboardUI() {
 
   // 5 Terbaru Receiving Entries
   if (elements.dashLatestReceivingsList) {
-    const latest5 = [...list].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 5);
+    const latest5 = [...actualList].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0)).slice(0, 5);
     if (latest5.length === 0) {
-      elements.dashLatestReceivingsList.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">Belum ada data receiving diinput.</p>`;
+      elements.dashLatestReceivingsList.innerHTML = `<p class="text-xs text-slate-400 py-4 text-center">Belum ada data receiving diinput oleh petugas.</p>`;
     } else {
       elements.dashLatestReceivingsList.innerHTML = latest5.map(item => {
         const kecObj = (state.master.kecamatan || []).find(k => String(k.id) === String(item.id_kecamatan));
         const desaObj = (state.master.desa || []).find(d => String(d.id) === String(item.id_desa));
-        const kecName = kecObj ? kecObj.nama : item.id_kecamatan;
-        const desaName = desaObj ? desaObj.nama : item.id_desa;
-
         return `
-          <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs">
+          <div class="flex items-center justify-between p-2.5 hover:bg-slate-50 rounded-xl transition border border-slate-100 text-xs">
             <div>
-              <div class="font-bold text-bps-navy font-mono">${item.id_sls} <span class="text-slate-700 font-semibold font-sans ml-1">${item.nama_sls || ''}</span></div>
-              <div class="text-[10px] text-slate-400">${desaName} (${kecName}) • PPL: ${item.ppl || '-'}</div>
+              <div class="font-bold text-bps-navy font-mono">${item.id_sls}</div>
+              <div class="font-semibold text-slate-800">${item.nama_sls || ''} (${desaObj ? desaObj.nama : ''}, ${kecObj ? kecObj.nama : ''})</div>
             </div>
             <div class="text-right">
-              <span class="text-[10px] font-bold text-slate-500 block">${item.tgl_penerimaan || ''}</span>
+              <span class="text-[10px] font-bold text-slate-500 block">${item.tgl_penerimaan || item.tgl_diterima || ''}</span>
               <span class="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">${item.kondisi || 'Baik'}</span>
             </div>
           </div>`;
@@ -1569,7 +1581,7 @@ function renderDashboardUI() {
       const kecRows = pagedKec.map((k, idx) => {
         const globalIdx = startIdx + idx + 1;
         const kecIdStr = String(k.id);
-        const kecReceivings = list.filter(r => String(r.id_kecamatan) === kecIdStr);
+        const kecReceivings = actualList.filter(r => String(r.id_kecamatan) === kecIdStr);
         
         let targetSLS = k.total_sls || 0;
         if (surveyObj && surveyObj.jenis === 'survei' && Array.isArray(surveyObj.sample_sls)) {
@@ -1580,7 +1592,7 @@ function renderDashboardUI() {
           }).length;
         }
 
-        const kecDiterima = kecReceivings.filter(r => r.status_diterima !== 'Belum Diterima').length;
+        const kecDiterima = kecReceivings.filter(r => r.status_diterima === 'Sudah Diterima').length;
         const diinput = kecReceivings.length;
         const kPct = targetSLS > 0 ? Math.min(((diinput / targetSLS) * 100), 100).toFixed(1) : 0;
         const kecPerubahan = kecReceivings.filter(r => r.perubahan_sls).length;
