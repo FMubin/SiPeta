@@ -2297,6 +2297,9 @@ function renderScanningTable() {
     );
   }
 
+  const user = state.currentUser;
+  const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
+
   const total = list.length;
   const page = state.pagination.scanning.page;
   const limit = state.pagination.scanning.limit;
@@ -2322,11 +2325,42 @@ function renderScanningTable() {
       const isScanYa = (item.status_scan || 'Tidak') === 'Ya';
 
       const kecObj = state.master.kecamatan.find(k => String(k.id) === String(item.id_kecamatan));
-      const kecName = kecObj ? kecObj.nama : item.id_kecamatan;
+      const kecName = kecObj ? kecObj.nama : (item.id_kecamatan || '-');
 
       const desaObj = state.master.desa.find(d => String(d.id) === String(item.id_desa));
-      const desaName = desaObj ? desaObj.nama : item.id_desa;
+      const desaName = desaObj ? desaObj.nama : (item.id_desa || '-');
 
+      if (isAdmin) {
+        // Read-Only Admin / Superadmin Row
+        const scanStatusBadge = isScanYa
+          ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2.5 py-1 rounded-full border border-emerald-300"><i class="fa-solid fa-circle-check mr-1"></i>Sudah Discan</span>'
+          : '<span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-1 rounded-full">Belum Discan</span>';
+
+        const actionBtn = isScanYa
+          ? `<button type="button" onclick="batalScanSLS('${item.id_sls || item.id}')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-2.5 py-1 rounded-lg text-xs transition inline-flex items-center gap-1 shadow-sm" title="Batalkan Status Scanning">
+              <i class="fa-solid fa-ban"></i> Batal Scan
+             </button>`
+          : '<span class="text-slate-400 text-[11px] font-medium">-</span>';
+
+        return `
+          <tr class="hover:bg-slate-50 transition border-b border-slate-100 ${isScanYa ? 'bg-emerald-50/20' : ''}">
+            <td class="p-3 text-center font-mono text-slate-400 text-xs">${globalIdx}</td>
+            <td class="p-3">
+              <div class="font-mono font-bold text-slate-800 text-xs">${item.id_sls}</div>
+              <div class="text-[11px] text-slate-600 font-medium">${item.nama_sls || '-'}</div>
+            </td>
+            <td class="p-3 text-slate-700">
+              <div class="font-semibold text-xs">${desaName}</div>
+              <div class="text-[10px] text-slate-400 font-mono">Kode Kec: ${item.id_kecamatan || '-'} (${kecName})</div>
+            </td>
+            <td class="p-3 text-center">${scanStatusBadge}</td>
+            <td class="p-3 text-slate-800 font-semibold text-xs">${item.petugas_scan || '-'}</td>
+            <td class="p-3 text-center text-slate-600 font-mono text-[11px] font-semibold">${item.tgl_scan || '-'}</td>
+            <td class="p-3 text-center">${actionBtn}</td>
+          </tr>`;
+      }
+
+      // Interactive Scanner Officer Row
       return `
         <tr class="hover:bg-blue-50/40 transition border-b border-slate-100 ${isScanYa ? 'bg-emerald-50/40' : ''}">
           <td class="p-3 text-center font-mono text-slate-400 text-xs">${globalIdx}</td>
@@ -2336,7 +2370,7 @@ function renderScanningTable() {
           </td>
           <td class="p-3 text-slate-700">
             <div class="font-semibold text-xs">${desaName}</div>
-            <div class="text-[10px] text-slate-400">${kecName}</div>
+            <div class="text-[10px] text-slate-400 font-mono">Kode Kec: ${item.id_kecamatan || '-'} (${kecName})</div>
           </td>
           <td class="p-3 text-center">
             <select onchange="updateScanStatus('${item.id}', this.value)" class="text-xs border ${isScanYa ? 'border-emerald-500 bg-emerald-100 text-emerald-900 font-bold' : 'border-slate-300 bg-white text-slate-700'} rounded-lg px-2.5 py-1 focus:ring-2 focus:ring-blue-500 cursor-pointer">
@@ -3687,6 +3721,37 @@ window.quickToggleScan = async function(id, targetStatus) {
   const inputPetugas = document.getElementById(`inputPetugasScan_${id}`);
   const petugasScan = inputPetugas ? inputPetugas.value : '';
   await window.updateScanStatus(id, targetStatus);
+};
+
+window.batalScanSLS = async function(idSlsOrId) {
+  if (!confirm(`Apakah Anda yakin ingin MEMBATALKAN status scanning untuk SLS ini?`)) {
+    return;
+  }
+  const item = (state.receivings || []).find(r => String(r.id_sls) === String(idSlsOrId) || String(r.id) === String(idSlsOrId));
+  if (!item) {
+    showToast('Data receiving SLS belum ditemukan untuk dibatalkan', 'error');
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/receivings/${item.id}/scan`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status_scan: 'Tidak', petugas_scan: '', tgl_scan: '' })
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast(`Status scan SLS ${item.id_sls} berhasil dibatalkan`, 'info');
+      await refreshAllData();
+      if (typeof renderScanningTable === 'function') {
+        renderScanningTable();
+      }
+    } else {
+      showToast(json.message || 'Gagal membatalkan status scan', 'error');
+    }
+  } catch (err) {
+    showToast('Terjadi kesalahan koneksi', 'error');
+  }
 };
 
 window.deleteReceiving = async function(id) {
