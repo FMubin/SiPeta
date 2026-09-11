@@ -2189,9 +2189,6 @@ function renderReceivingsTable() {
           <td class="p-3 text-center">
             ${jaringanBadge}
           </td>
-          <td class="p-3 text-center">
-            ${scanBadge}
-          </td>
           <td class="p-3 text-center space-x-1">
             <button onclick="openEditReceivingModal('${item.id}')" class="bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold px-2 py-1 rounded-lg text-xs transition inline-flex items-center gap-1 shadow-sm" title="Edit Data Receiving">
               <i class="fa-solid fa-pen-to-square"></i> Edit
