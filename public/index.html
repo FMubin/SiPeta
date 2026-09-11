@@ -472,6 +472,11 @@
               <p class="text-xs text-teal-100">Tandai dokumen peta fisik yang sudah diterima secara utuh di kantor BPS</p>
             </div>
           </div>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="window.handleRefreshPenerima()" class="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded-xl border border-white/20 transition flex items-center gap-2 shadow-sm" title="Refresh Data Terbaru dari Server">
+              <i class="fa-solid fa-arrows-rotate text-teal-200" id="hdrIconRefreshPenerima"></i> Refresh Data
+            </button>
+          </div>
         </div>
 
         <div class="p-5 bg-slate-50 border-b border-slate-200">
@@ -510,6 +515,9 @@
                 <span id="penerimaDesaInfo">Desa loaded</span>
               </div>
               <div class="flex items-center space-x-2">
+                <button type="button" id="btnRefreshPenerima" onclick="window.handleRefreshPenerima()" class="text-xs bg-white border border-teal-300 text-teal-900 px-3 py-1.5 rounded-lg font-bold hover:bg-teal-100 transition flex items-center gap-1.5 shadow-sm" title="Muat ulang data dari server">
+                  <i class="fa-solid fa-arrows-rotate text-teal-600" id="iconRefreshPenerima"></i> Refresh Data
+                </button>
                 <button type="button" id="btnCheckAllPenerima" class="text-xs bg-white border border-teal-300 text-teal-900 px-3 py-1.5 rounded-lg font-bold hover:bg-teal-100 transition">
                   <i class="fa-solid fa-check-double mr-1"></i> Tandai Semua 'Sudah Diterima'
                 </button>

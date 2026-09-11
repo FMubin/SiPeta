@@ -491,7 +491,9 @@ function switchTab(tabName) {
   state.activeTab = tabName;
 
   if (tabName === 'penerima') {
-    fetchPenerimaSlsList();
+    refreshAllData().then(() => {
+      fetchPenerimaSlsList();
+    });
   }
 }
 
@@ -1966,6 +1968,32 @@ window.batalAllPenerimaAdmin = async function() {
   }
 };
 
+window.handleRefreshPenerima = async function() {
+  const icon1 = document.getElementById('hdrIconRefreshPenerima');
+  const icon2 = document.getElementById('iconRefreshPenerima');
+  if (icon1) icon1.classList.add('fa-spin');
+  if (icon2) icon2.classList.add('fa-spin');
+
+  try {
+    await refreshAllData();
+    const selectedDesa = elements.inputPenerimaDesa ? elements.inputPenerimaDesa.value : '';
+    const selectedKec = elements.inputPenerimaKecamatan ? elements.inputPenerimaKecamatan.value : '';
+    if (selectedDesa || selectedKec) {
+      await fetchPenerimaSlsList(selectedDesa, selectedKec);
+    } else if (state.currentSlsList && state.currentSlsList.length > 0) {
+      renderPenerimaMatrix(state.currentSlsList);
+    }
+    showToast('Data penerimaan peta berhasil diperbarui dari server!', 'info');
+  } catch (err) {
+    showToast('Gagal memperbarui data', 'error');
+  } finally {
+    setTimeout(() => {
+      if (icon1) icon1.classList.remove('fa-spin');
+      if (icon2) icon2.classList.remove('fa-spin');
+    }, 400);
+  }
+};
+
 function updatePenerimaCount() {
   const statuses = document.querySelectorAll('.chk-penerima-status');
   let count = 0;
@@ -2397,6 +2425,9 @@ function setupEventListeners() {
         if (json.success) {
           showToast(json.message || 'Status penerimaan dokumen peta berhasil disimpan!', 'success');
           await refreshAllData();
+          if (typeof renderPenerimaMatrix === 'function' && state.currentSlsList) {
+            renderPenerimaMatrix(state.currentSlsList);
+          }
         } else {
           showToast(json.message || 'Gagal menyimpan status penerimaan', 'error');
         }
@@ -3641,3 +3672,21 @@ function parseCsvContent(text) {
   }
   return users;
 }
+
+// -------------------------------------------------------------
+// REAL-TIME AUTO-SYNC POLLING (Background update every 15s)
+// -------------------------------------------------------------
+setInterval(async () => {
+  if (document.hidden) return;
+  if (state.activeTab === 'penerima' || state.activeTab === 'daftarpeta' || state.activeTab === 'dashboard') {
+    try {
+      await refreshAllData();
+      if (state.activeTab === 'penerima' && state.currentSlsList && state.currentSlsList.length > 0) {
+        renderPenerimaMatrix(state.currentSlsList);
+      }
+    } catch (e) {
+      // silent background sync catch
+    }
+  }
+}, 15000);
+
