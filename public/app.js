@@ -1759,6 +1759,16 @@ function renderPenerimaMatrix(slsList) {
     }
   }
 
+  const btnBatalAllPenerimaAdmin = document.getElementById('btnBatalAllPenerimaAdmin');
+  if (btnBatalAllPenerimaAdmin) {
+    if (isAdmin) {
+      btnBatalAllPenerimaAdmin.classList.remove('hidden');
+      btnBatalAllPenerimaAdmin.onclick = window.batalAllPenerimaAdmin;
+    } else {
+      btnBatalAllPenerimaAdmin.classList.add('hidden');
+    }
+  }
+
   const btnSubmitPenerima = document.getElementById('btnSubmitPenerima');
   if (btnSubmitPenerima) {
     if (isAdmin) {
@@ -1895,6 +1905,61 @@ window.batalPenerimaSLS = async function(idSls) {
       }
     } else {
       showToast(json.message || 'Gagal membatalkan penerimaan', 'error');
+    }
+  } catch (err) {
+    showToast('Terjadi kesalahan koneksi', 'error');
+  }
+};
+
+window.batalAllPenerimaAdmin = async function() {
+  const currentList = state.currentSlsList || [];
+  const recMap = new Map((state.receivings || []).map(r => [String(r.id_sls).trim(), r]));
+
+  const itemsToCancel = currentList.filter(item => {
+    const rec = recMap.get(String(item.id_sls).trim());
+    return rec && rec.status_diterima === 'Sudah Diterima';
+  });
+
+  if (itemsToCancel.length === 0) {
+    showToast('Tidak ada SLS berstatus "Sudah Diterima" pada filter ini yang perlu dibatalkan.', 'info');
+    return;
+  }
+
+  const selectedDesaId = elements.inputPenerimaDesa ? elements.inputPenerimaDesa.value : '';
+  const selectedKecId = elements.inputPenerimaKecamatan ? elements.inputPenerimaKecamatan.value : '';
+  const desaObj = (state.master.desa || []).find(d => String(d.id) === String(selectedDesaId));
+  const kecObj = (state.master.kecamatan || []).find(k => String(k.id) === String(selectedKecId));
+  const locName = desaObj ? `Desa ${desaObj.nama}` : (kecObj ? `Kecamatan ${kecObj.nama}` : 'filter ini');
+
+  if (!confirm(`Apakah Anda yakin ingin MEMBATALKAN SELURUH STATUS PENERIMAAN (${itemsToCancel.length} SLS) pada ${locName}?`)) {
+    return;
+  }
+
+  const payloadItems = itemsToCancel.map(item => ({
+    id_sls: String(item.id_sls).trim(),
+    nama_sls: item.nama_sls || '',
+    id_kecamatan: String(item.kec_id || selectedKecId || ''),
+    id_desa: String(item.desa_id || selectedDesaId || ''),
+    status_diterima: 'Belum Diterima',
+    tgl_diterima: '',
+    petugas_penerima: ''
+  }));
+
+  try {
+    const res = await fetch('/api/receivings/penerima-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items: payloadItems, survey_id: state.activeSurveyId })
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast(`Berhasil membatalkan status penerimaan ${itemsToCancel.length} SLS pada ${locName}.`, 'success');
+      await refreshAllData();
+      if (typeof renderPenerimaMatrix === 'function' && state.currentSlsList) {
+        renderPenerimaMatrix(state.currentSlsList);
+      }
+    } else {
+      showToast(json.message || 'Gagal membatalkan penerimaan bulk', 'error');
     }
   } catch (err) {
     showToast('Terjadi kesalahan koneksi', 'error');
