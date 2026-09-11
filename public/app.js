@@ -1048,21 +1048,11 @@ async function fetchReceivings() {
   try {
     const params = new URLSearchParams();
     if (state.activeSurveyId) params.append('survey_id', state.activeSurveyId);
-    if (state.filters.kec_id) params.append('kec_id', state.filters.kec_id);
-    if (state.filters.desa_id) params.append('desa_id', state.filters.desa_id);
-    if (state.filters.search) params.append('search', state.filters.search);
-    if (state.filters.sort_by) params.append('sort_by', state.filters.sort_by);
-    if (state.filters.status_scan) params.append('status_scan', state.filters.status_scan);
-    if (state.filters.status_diterima) params.append('status_diterima', state.filters.status_diterima);
-    if (state.filters.kondisi) params.append('kondisi', state.filters.kondisi);
-    if (state.filters.jaringan) params.append('kualitas_jaringan', state.filters.jaringan);
-    if (state.filters.perbaikan_batas) params.append('perbaikan_batas', state.filters.perbaikan_batas);
-    if (state.filters.perubahan_sls) params.append('perubahan_sls', state.filters.perubahan_sls);
 
     const res = await fetch('/api/receivings?' + params.toString());
     const json = await res.json();
     if (json.success) {
-      state.receivings = json.data;
+      state.receivings = json.data || [];
       renderReceivingsTable();
       renderPerubahanSlsTable();
       renderScanningTable();
@@ -1152,7 +1142,7 @@ function getAvailableDesaList(selectedKecId = '') {
   return filteredDesa;
 }
 
-function getFilteredReceivingsForUser() {
+function getBaseSlsListForUser() {
   const user = state.currentUser;
   let allSlsSource = (state.allMasterSls && state.allMasterSls.length > 0) ? state.allMasterSls : [];
 
@@ -1221,6 +1211,12 @@ function getFilteredReceivingsForUser() {
     list = list.filter(item => assigned.includes(String(item.id_kecamatan)));
   }
 
+  return list;
+}
+
+function getFilteredReceivingsForUser() {
+  let list = getBaseSlsListForUser();
+
   // Filter by Kecamatan
   if (state.filters.kec_id) {
     list = list.filter(item => String(item.id_kecamatan) === String(state.filters.kec_id));
@@ -1270,6 +1266,12 @@ function getFilteredReceivingsForUser() {
   if (state.filters.perubahan_sls) {
     const isPerubahan = state.filters.perubahan_sls === 'ya' || state.filters.perubahan_sls === 'true' || state.filters.perubahan_sls === 'Ada';
     list = list.filter(item => item.perubahan_sls === isPerubahan);
+  }
+
+  if (state.filters.sort_by === 'sls_asc') {
+    list.sort((a, b) => String(a.id_sls).localeCompare(String(b.id_sls), undefined, { numeric: true }));
+  } else if (state.filters.sort_by === 'date_desc') {
+    list.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   }
 
   return list;
@@ -2213,20 +2215,34 @@ function renderReceivingsTable() {
 }
 
 function renderPerubahanSlsTable() {
-  let list = getFilteredReceivingsForUser().filter(r => r.perubahan_sls);
+  let list = getBaseSlsListForUser().filter(r => r.perubahan_sls);
 
-  if (state.filters.kode_perubahan) {
-    list = list.filter(r => String(r.kode_jenis_perubahan_sls) === String(state.filters.kode_perubahan));
+  const kecId = elements.filterKecamatanPerubahan ? elements.filterKecamatanPerubahan.value : '';
+  const desaId = elements.filterDesaPerubahan ? elements.filterDesaPerubahan.value : '';
+  const kodePerubahan = elements.filterKodePerubahanSls ? elements.filterKodePerubahanSls.value : '';
+  const query = elements.searchPerubahanSls ? elements.searchPerubahanSls.value.trim().toLowerCase() : '';
+
+  if (kecId) {
+    list = list.filter(r => String(r.id_kecamatan) === String(kecId));
+  }
+  if (desaId) {
+    list = list.filter(r => String(r.id_desa) === String(desaId));
+  }
+  if (kodePerubahan) {
+    list = list.filter(r => String(r.kode_jenis_perubahan_sls) === String(kodePerubahan));
+  }
+  if (query) {
+    list = list.filter(r => 
+      (r.id_sls && String(r.id_sls).toLowerCase().includes(query)) ||
+      (r.nama_sls && String(r.nama_sls).toLowerCase().includes(query)) ||
+      (r.ppl && String(r.ppl).toLowerCase().includes(query)) ||
+      (r.catatan && String(r.catatan).toLowerCase().includes(query))
+    );
   }
 
-  if (state.filters.search_perubahan) {
-    const query = state.filters.search_perubahan.toLowerCase();
-    list = list.filter(r => 
-      (r.id_sls && r.id_sls.toLowerCase().includes(query)) ||
-      (r.nama_sls && r.nama_sls.toLowerCase().includes(query)) ||
-      (r.ppl && r.ppl.toLowerCase().includes(query)) ||
-      (r.catatan && r.catatan.toLowerCase().includes(query))
-    );
+  // Update big header badge on Perubahan SLS tab header card
+  if (elements.countPerubahanSlsBig) {
+    elements.countPerubahanSlsBig.textContent = list.length;
   }
 
   const total = list.length;
@@ -2243,7 +2259,7 @@ function renderPerubahanSlsTable() {
   if (total === 0) {
     elements.tbodyPerubahanSls.innerHTML = `
       <tr>
-        <td colspan="5" class="p-8 text-center text-slate-400">
+        <td colspan="6" class="p-8 text-center text-slate-400">
           <i class="fa-solid fa-code-fork text-3xl mb-2 text-purple-300"></i>
           <p>Belum ada data penerimaan peta dengan Perubahan SLS.</p>
         </td>
@@ -2282,15 +2298,28 @@ function renderPerubahanSlsTable() {
 // -------------------------------------------------------------
 
 function renderScanningTable() {
-  let list = getFilteredReceivingsForUser();
+  let list = getBaseSlsListForUser();
 
-  if (state.filters.search_scanning) {
-    const query = state.filters.search_scanning.toLowerCase();
+  const kecId = elements.filterKecamatanScanning ? elements.filterKecamatanScanning.value : '';
+  const desaId = elements.filterDesaScanning ? elements.filterDesaScanning.value : '';
+  const statusScan = elements.filterStatusScan ? elements.filterStatusScan.value : '';
+  const query = elements.searchScanning ? elements.searchScanning.value.trim().toLowerCase() : '';
+
+  if (kecId) {
+    list = list.filter(r => String(r.id_kecamatan) === String(kecId));
+  }
+  if (desaId) {
+    list = list.filter(r => String(r.id_desa) === String(desaId));
+  }
+  if (statusScan) {
+    list = list.filter(r => (r.status_scan || 'Tidak').toUpperCase() === statusScan.toUpperCase());
+  }
+  if (query) {
     list = list.filter(r => 
-      (r.id_sls && r.id_sls.toLowerCase().includes(query)) ||
-      (r.nama_sls && r.nama_sls.toLowerCase().includes(query)) ||
-      (r.ppl && r.ppl.toLowerCase().includes(query)) ||
-      (r.petugas_scan && r.petugas_scan.toLowerCase().includes(query))
+      (r.id_sls && String(r.id_sls).toLowerCase().includes(query)) ||
+      (r.nama_sls && String(r.nama_sls).toLowerCase().includes(query)) ||
+      (r.ppl && String(r.ppl).toLowerCase().includes(query)) ||
+      (r.petugas_scan && String(r.petugas_scan).toLowerCase().includes(query))
     );
   }
 
@@ -3183,23 +3212,64 @@ function setupEventListeners() {
     });
   }
 
-  // Filter listeners for Kecamatan (Synced across tabs)
-  const handleKecamatanChange = (e) => {
-    syncRegionFilters(e.target.value, '');
-    fetchReceivings();
-  };
-  if (elements.filterKecamatan) elements.filterKecamatan.addEventListener('change', handleKecamatanChange);
-  if (elements.filterKecamatanPerubahan) elements.filterKecamatanPerubahan.addEventListener('change', handleKecamatanChange);
-  if (elements.filterKecamatanScanning) elements.filterKecamatanScanning.addEventListener('change', handleKecamatanChange);
+  // Filter listeners for Daftar Peta tab
+  if (elements.filterKecamatan) {
+    elements.filterKecamatan.addEventListener('change', (e) => {
+      state.filters.kec_id = e.target.value;
+      state.filters.desa_id = '';
+      updateFilterDesaDropdown(e.target.value);
+      state.pagination.receivings.page = 1;
+      renderReceivingsTable();
+    });
+  }
 
-  // Filter listeners for Desa (Synced across tabs)
-  const handleDesaChange = (e) => {
-    syncRegionFilters(state.filters.kec_id, e.target.value);
-    fetchReceivings();
-  };
-  if (elements.filterDesa) elements.filterDesa.addEventListener('change', handleDesaChange);
-  if (elements.filterDesaPerubahan) elements.filterDesaPerubahan.addEventListener('change', handleDesaChange);
-  if (elements.filterDesaScanning) elements.filterDesaScanning.addEventListener('change', handleDesaChange);
+  if (elements.filterDesa) {
+    elements.filterDesa.addEventListener('change', (e) => {
+      state.filters.desa_id = e.target.value;
+      state.pagination.receivings.page = 1;
+      renderReceivingsTable();
+    });
+  }
+
+  // Filter listeners for Perubahan SLS tab
+  if (elements.filterKecamatanPerubahan) {
+    elements.filterKecamatanPerubahan.addEventListener('change', (e) => {
+      const filteredDesa = getAvailableDesaList(e.target.value);
+      if (elements.filterDesaPerubahan) {
+        elements.filterDesaPerubahan.innerHTML = '<option value="">Semua Desa/Kelurahan Hak Akses</option>' +
+          filteredDesa.map(d => `<option value="${d.id}">${d.nama}</option>`).join('');
+      }
+      state.pagination.perubahan.page = 1;
+      renderPerubahanSlsTable();
+    });
+  }
+
+  if (elements.filterDesaPerubahan) {
+    elements.filterDesaPerubahan.addEventListener('change', () => {
+      state.pagination.perubahan.page = 1;
+      renderPerubahanSlsTable();
+    });
+  }
+
+  // Filter listeners for Scanning tab
+  if (elements.filterKecamatanScanning) {
+    elements.filterKecamatanScanning.addEventListener('change', (e) => {
+      const filteredDesa = getAvailableDesaList(e.target.value);
+      if (elements.filterDesaScanning) {
+        elements.filterDesaScanning.innerHTML = '<option value="">Semua Desa/Kelurahan Hak Akses</option>' +
+          filteredDesa.map(d => `<option value="${d.id}">${d.nama}</option>`).join('');
+      }
+      state.pagination.scanning.page = 1;
+      renderScanningTable();
+    });
+  }
+
+  if (elements.filterDesaScanning) {
+    elements.filterDesaScanning.addEventListener('change', () => {
+      state.pagination.scanning.page = 1;
+      renderScanningTable();
+    });
+  }
 
   // Reset filter listeners (Synced across tabs)
   const handleResetFilters = () => {
@@ -3227,8 +3297,15 @@ function setupEventListeners() {
     if (elements.filterPerbaikanBatas) elements.filterPerbaikanBatas.value = '';
     if (elements.filterPerubahanSls) elements.filterPerubahanSls.value = '';
 
+    if (elements.filterKecamatanPerubahan) elements.filterKecamatanPerubahan.value = '';
+    if (elements.filterDesaPerubahan) elements.filterDesaPerubahan.value = '';
+    if (elements.filterKecamatanScanning) elements.filterKecamatanScanning.value = '';
+    if (elements.filterDesaScanning) elements.filterDesaScanning.value = '';
+
     syncRegionFilters('', '');
-    fetchReceivings();
+    renderReceivingsTable();
+    renderPerubahanSlsTable();
+    renderScanningTable();
   };
   if (elements.btnResetFilter) elements.btnResetFilter.addEventListener('click', handleResetFilters);
   if (elements.btnResetFilterPerubahan) elements.btnResetFilterPerubahan.addEventListener('click', handleResetFilters);
