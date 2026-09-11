@@ -782,23 +782,30 @@ app.post('/api/receivings/penerima-bulk', async (req, res) => {
   items.forEach(item => {
     if (!item.id_sls) return;
     const cleanIdSls = String(item.id_sls).trim();
-    const existingIndex = db.receivings.findIndex(r => String(r.id_sls).trim() === cleanIdSls);
-
     const isSudah = item.status_diterima === 'Sudah Diterima' || item.status_diterima === 'Ya';
     const statusDiterima = isSudah ? 'Sudah Diterima' : 'Belum Diterima';
     const tglDiterima = isSudah ? (item.tgl_diterima || new Date().toISOString().split('T')[0]) : '';
     const petugasPenerima = isSudah ? (item.petugas_penerima || 'Petugas Penerima') : '';
 
-    if (existingIndex !== -1) {
-      db.receivings[existingIndex].status_diterima = statusDiterima;
-      db.receivings[existingIndex].tgl_diterima = tglDiterima;
-      db.receivings[existingIndex].petugas_penerima = petugasPenerima;
-      if (item.kondisi) {
-        db.receivings[existingIndex].kondisi = (item.kondisi === 'Baik' || item.kondisi === 'Rusak' || item.kondisi === 'Hilang') ? item.kondisi : 'Baik';
+    const matchingIndices = [];
+    db.receivings.forEach((r, idx) => {
+      if (String(r.id_sls).trim() === cleanIdSls) {
+        matchingIndices.push(idx);
       }
-      if (item.no_bangunan_terbesar !== undefined) {
-        db.receivings[existingIndex].no_bangunan_terbesar = Number(item.no_bangunan_terbesar) || 0;
-      }
+    });
+
+    if (matchingIndices.length > 0) {
+      matchingIndices.forEach(idx => {
+        db.receivings[idx].status_diterima = statusDiterima;
+        db.receivings[idx].tgl_diterima = tglDiterima;
+        db.receivings[idx].petugas_penerima = petugasPenerima;
+        if (item.kondisi) {
+          db.receivings[idx].kondisi = (item.kondisi === 'Baik' || item.kondisi === 'Rusak' || item.kondisi === 'Hilang') ? item.kondisi : 'Baik';
+        }
+        if (item.no_bangunan_terbesar !== undefined) {
+          db.receivings[idx].no_bangunan_terbesar = Number(item.no_bangunan_terbesar) || 0;
+        }
+      });
       countUpdated++;
     } else {
       const newId = 'REC-' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 1000);

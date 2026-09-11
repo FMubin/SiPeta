@@ -1099,8 +1099,9 @@ function getAvailableKecamatanList() {
         const kecId = item.kec_id ? String(item.kec_id) : (id.length >= 7 ? id.slice(0, 7) : '');
         if (kecId) sampleKecIds.add(kecId);
       });
-      if (sampleKecIds.size > 0) {
-        allKec = allKec.filter(k => sampleKecIds.has(String(k.id)));
+      const matchingKec = allKec.filter(k => sampleKecIds.has(String(k.id)));
+      if (matchingKec.length > 0) {
+        allKec = matchingKec;
       }
     }
   }
@@ -1131,8 +1132,9 @@ function getAvailableDesaList(selectedKecId = '') {
         const desaId = item.desa_id ? String(item.desa_id) : (id.length >= 10 ? id.slice(0, 10) : '');
         if (desaId) sampleDesaIds.add(desaId);
       });
-      if (sampleDesaIds.size > 0) {
-        filteredDesa = filteredDesa.filter(d => sampleDesaIds.has(String(d.id)));
+      const matchingSampleDesa = filteredDesa.filter(d => sampleDesaIds.has(String(d.id)));
+      if (matchingSampleDesa.length > 0) {
+        filteredDesa = matchingSampleDesa;
       }
     }
   }
