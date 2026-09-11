@@ -823,6 +823,9 @@
 
           <!-- Export Excel & Sort Controls -->
           <div class="flex items-center gap-2 w-full lg:w-auto justify-end">
+            <button type="button" onclick="window.handleRefreshGlobal('daftarpeta')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-3 py-2 rounded-xl transition flex items-center gap-1.5 shadow-sm" title="Refresh Data Server">
+              <i class="fa-solid fa-arrows-rotate text-bps-navy"></i> Refresh Data
+            </button>
             <button id="btnExportExcel" class="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold px-3 py-2 rounded-xl text-xs flex items-center gap-1.5 transition shadow-sm" title="Unduh Rekap Penerimaan Peta (Excel)">
               <i class="fa-solid fa-file-excel text-emerald-600 text-sm"></i> Unduh Excel
             </button>
@@ -877,10 +880,6 @@
             <option value="ya">Perubahan SLS: Ada</option>
             <option value="tidak">Perubahan SLS: Tidak Ada</option>
           </select>
-
-          <button type="button" onclick="window.handleRefreshGlobal('daftarpeta')" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 shadow-sm" title="Refresh Data Server">
-            <i class="fa-solid fa-arrows-rotate text-bps-navy"></i> Refresh Data
-          </button>
 
           <button id="btnResetFilter" class="text-xs text-slate-600 hover:text-red-600 font-bold px-2 py-1.5 transition flex items-center gap-1 sm:ml-auto w-full sm:w-auto justify-center sm:justify-start" title="Reset semua filter">
             <i class="fa-solid fa-rotate-left"></i> Reset
@@ -949,7 +948,12 @@
           </h2>
           <p class="text-xs text-purple-200">Menampilkan daftar peta yang memiliki indikasi perubahan SLS (Kode 1-9).</p>
         </div>
-        <span class="text-2xl font-black bg-white/10 px-4 py-2 rounded-xl text-purple-200" id="countPerubahanSlsBig">0</span>
+        <div class="flex items-center gap-3">
+          <button type="button" onclick="window.handleRefreshGlobal('perubahansls')" class="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded-xl border border-white/20 transition flex items-center gap-2 shadow-sm" title="Refresh Data Perubahan SLS">
+            <i class="fa-solid fa-arrows-rotate text-purple-200"></i> Refresh Data
+          </button>
+          <span class="text-2xl font-black bg-white/10 px-4 py-2 rounded-xl text-purple-200" id="countPerubahanSlsBig">0</span>
+        </div>
       </div>
 
       <!-- Filter Bar: Perubahan SLS -->
@@ -1034,7 +1038,18 @@
 
     <!-- 4. SCANNING TAB CONTENT -->
     <div id="tab-batching" class="tab-content hidden space-y-4">
-      
+      <div class="bg-blue-900 text-white p-5 rounded-2xl shadow-md flex items-center justify-between">
+        <div>
+          <h2 class="text-base font-bold flex items-center gap-2">
+            <i class="fa-solid fa-barcode"></i> Status Scanning Dokumen Peta SLS
+          </h2>
+          <p class="text-xs text-blue-200">Monitoring dan kelola status hasil scan peta SLS.</p>
+        </div>
+        <button type="button" onclick="window.handleRefreshGlobal('scanning')" class="bg-white/10 hover:bg-white/20 text-white text-xs font-bold px-3 py-2 rounded-xl border border-white/20 transition flex items-center gap-2 shadow-sm" title="Refresh Data Scanning">
+          <i class="fa-solid fa-arrows-rotate text-blue-200"></i> Refresh Data
+        </button>
+      </div>
+
       <!-- Filter Toolbar: Scanning -->
       <div class="bg-white rounded-2xl border border-slate-200 shadow-md p-4 flex flex-col lg:flex-row items-center justify-between gap-3 sm:gap-4">
         <div class="relative w-full lg:w-64">
