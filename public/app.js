@@ -990,6 +990,14 @@ async function loadMasterData() {
       state.master = json.data;
       populateMasterDropdowns();
     }
+    const resSls = await fetch('/api/master/sls');
+    const jsonSls = await resSls.json();
+    if (jsonSls.success) {
+      state.allMasterSls = jsonSls.data || [];
+      if (typeof renderReceivingsTable === 'function') {
+        renderReceivingsTable();
+      }
+    }
   } catch (err) {
     showToast('Gagal memuat master data SLS BPS Kabupaten Pandeglang', 'error');
   }
@@ -1145,21 +1153,92 @@ function getAvailableDesaList(selectedKecId = '') {
 }
 
 function getFilteredReceivingsForUser() {
-  let list = state.receivings || [];
   const user = state.currentUser;
+  let allSlsSource = (state.allMasterSls && state.allMasterSls.length > 0) ? state.allMasterSls : [];
 
   // Filter by Active Survey if active survey is a survei type with sample_sls
   if (state.activeSurveyId) {
     const surveyObj = (state.surveys || []).find(s => s.id === state.activeSurveyId);
     if (surveyObj && surveyObj.jenis === 'survei' && Array.isArray(surveyObj.sample_sls) && surveyObj.sample_sls.length > 0) {
-      const sampleSet = new Set(surveyObj.sample_sls.map(s => String(s.id_sls || s).trim()));
-      list = list.filter(item => sampleSet.has(String(item.id_sls).trim()));
+      const sampleMap = new Map(surveyObj.sample_sls.map(s => [String(s.id_sls || s).trim(), s]));
+      allSlsSource = allSlsSource.filter(item => sampleMap.has(String(item.id_sls).trim()));
     }
   }
 
+  // Create lookup map of existing saved receivings
+  const recMap = new Map();
+  (state.receivings || []).forEach(r => {
+    if (r.id_sls) recMap.set(String(r.id_sls).trim(), r);
+  });
+
+  // Combine master SLS with receiving data (or create default empty state for uninput items)
+  let list = [];
+
+  if (allSlsSource.length > 0) {
+    list = allSlsSource.map(sls => {
+      const cleanId = String(sls.id_sls).trim();
+      const rec = recMap.get(cleanId);
+      if (rec) {
+        return {
+          ...sls,
+          ...rec,
+          id_sls: cleanId,
+          id_kecamatan: rec.id_kecamatan || sls.kec_id || sls.id_kecamatan || '',
+          id_desa: rec.id_desa || sls.desa_id || sls.id_desa || '',
+          nama_sls: rec.nama_sls || sls.nama_sls || '',
+          ppl: rec.ppl || sls.ppl || ''
+        };
+      }
+      return {
+        id_sls: cleanId,
+        nama_sls: sls.nama_sls || '',
+        id_kecamatan: sls.kec_id || sls.id_kecamatan || '',
+        id_desa: sls.desa_id || sls.id_desa || '',
+        ppl: sls.ppl || '',
+        no_peta: '',
+        status_diterima: 'Belum Diterima',
+        tgl_diterima: '',
+        petugas_penerima: '',
+        no_bangunan_terbesar: 0,
+        kondisi: '',
+        perbaikan_batas: false,
+        perubahan_sls: false,
+        kode_jenis_perubahan_sls: '',
+        kualitas_jaringan: '',
+        status_scan: 'Tidak',
+        tgl_scan: '',
+        petugas_scan: '',
+        catatan: ''
+      };
+    });
+  } else {
+    list = state.receivings || [];
+  }
+
+  // Restricted User Access Filter (assigned kecamatan)
   if (user && user.role !== 'admin' && user.role !== 'superadmin' && Array.isArray(user.assigned_kec) && user.assigned_kec.length > 0) {
     const assigned = user.assigned_kec.map(String);
     list = list.filter(item => assigned.includes(String(item.id_kecamatan)));
+  }
+
+  // Filter by Kecamatan
+  if (state.filters.kec_id) {
+    list = list.filter(item => String(item.id_kecamatan) === String(state.filters.kec_id));
+  }
+
+  // Filter by Desa
+  if (state.filters.desa_id) {
+    list = list.filter(item => String(item.id_desa) === String(state.filters.desa_id));
+  }
+
+  // Filter by Search Query
+  if (state.filters.search) {
+    const q = state.filters.search.toLowerCase();
+    list = list.filter(item => 
+      String(item.id_sls).toLowerCase().includes(q) ||
+      String(item.nama_sls).toLowerCase().includes(q) ||
+      String(item.ppl || '').toLowerCase().includes(q)
+    );
   }
 
   // Filter by Status Diterima
@@ -1173,12 +1252,12 @@ function getFilteredReceivingsForUser() {
 
   // Filter by Kondisi Peta
   if (state.filters.kondisi) {
-    list = list.filter(item => (item.kondisi || 'Baik') === state.filters.kondisi);
+    list = list.filter(item => item.kondisi === state.filters.kondisi);
   }
 
   // Filter by Kualitas Jaringan/Sinyal
   if (state.filters.jaringan) {
-    list = list.filter(item => (item.kualitas_jaringan || 'Kuat') === state.filters.jaringan);
+    list = list.filter(item => item.kualitas_jaringan === state.filters.jaringan);
   }
 
   // Filter by Perbaikan Batas
