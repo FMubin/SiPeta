@@ -31,7 +31,8 @@ const state = {
     scanning: { page: 1, limit: 10 },
     dashboardKec: { page: 1, limit: 10 },
     users: { page: 1, limit: 10 }
-  }
+  },
+  isPenerimaDirty: false
 };
 
 // DOM Elements
@@ -1791,6 +1792,7 @@ function getCurrentFormattedTimestamp() {
 
 function renderPenerimaMatrix(slsList) {
   if (!elements.tbodyPenerima) return;
+  state.isPenerimaDirty = false;
   const selectedDesaId = elements.inputPenerimaDesa ? elements.inputPenerimaDesa.value : '';
   const selectedKecId = elements.inputPenerimaKecamatan ? elements.inputPenerimaKecamatan.value : '';
   const desaObj = (state.master.desa || []).find(d => String(d.id) === String(selectedDesaId));
@@ -2505,8 +2507,18 @@ function setupEventListeners() {
     });
   }
 
+  if (elements.tbodyPenerima) {
+    elements.tbodyPenerima.addEventListener('change', () => {
+      state.isPenerimaDirty = true;
+    });
+    elements.tbodyPenerima.addEventListener('input', () => {
+      state.isPenerimaDirty = true;
+    });
+  }
+
   if (elements.btnCheckAllPenerima) {
     elements.btnCheckAllPenerima.addEventListener('click', () => {
+      state.isPenerimaDirty = true;
       const nowStamp = getCurrentFormattedTimestamp();
 
       document.querySelectorAll('.chk-penerima-status').forEach(sel => {
@@ -2565,6 +2577,7 @@ function setupEventListeners() {
         });
         const json = await res.json();
         if (json.success) {
+          state.isPenerimaDirty = false;
           showToast(json.message || 'Status penerimaan dokumen peta berhasil disimpan!', 'success');
           await refreshAllData();
           if (typeof renderPenerimaMatrix === 'function' && state.currentSlsList) {
@@ -3903,7 +3916,10 @@ setInterval(async () => {
     try {
       await refreshAllData();
       if (state.activeTab === 'penerima' && state.currentSlsList && state.currentSlsList.length > 0) {
-        renderPenerimaMatrix(state.currentSlsList);
+        const isFocusing = elements.tbodyPenerima && elements.tbodyPenerima.contains(document.activeElement);
+        if (!state.isPenerimaDirty && !isFocusing) {
+          renderPenerimaMatrix(state.currentSlsList);
+        }
       }
     } catch (e) {
       // silent background sync catch
