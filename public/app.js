@@ -1716,16 +1716,100 @@ function renderPenerimaMatrix(slsList) {
     }
   }
 
-  const defaultPetugas = state.currentUser ? (state.currentUser.nama || state.currentUser.username) : 'Nana Sumarna';
-  const defaultStamp = getCurrentFormattedTimestamp();
+  const user = state.currentUser;
+  const isAdmin = user && (user.role === 'admin' || user.role === 'superadmin');
+
+  // Adjust table header according to role
+  const theadPenerima = document.getElementById('theadPenerima');
+  if (theadPenerima) {
+    if (isAdmin) {
+      theadPenerima.innerHTML = `
+        <tr>
+          <th class="p-3 w-10 text-center">#</th>
+          <th class="p-3 w-48">Kode & Nama SLS</th>
+          <th class="p-3 w-28 text-center">Kondisi Peta</th>
+          <th class="p-3 w-28 text-center">No. Bangunan</th>
+          <th class="p-3 w-36 text-center">Status Penerimaan</th>
+          <th class="p-3 w-44 text-center">Waktu Diterima</th>
+          <th class="p-3 w-36">Petugas Penerima</th>
+          <th class="p-3 w-32 text-center">Aksi</th>
+        </tr>`;
+    } else {
+      theadPenerima.innerHTML = `
+        <tr>
+          <th class="p-3 w-12 text-center">#</th>
+          <th class="p-3 w-56">Kode & Nama SLS</th>
+          <th class="p-3 w-36 text-center">Kondisi Peta</th>
+          <th class="p-3 w-36 text-center">No. Bangunan Terbesar</th>
+          <th class="p-3 w-40 text-center">Status</th>
+          <th class="p-3 w-56 text-center">Keterangan (Jam & Tanggal)</th>
+        </tr>`;
+    }
+  }
+
+  // Adjust header/footer buttons according to role
+  const btnCheckAllPenerima = document.getElementById('btnCheckAllPenerima');
+  if (btnCheckAllPenerima) {
+    if (isAdmin) {
+      btnCheckAllPenerima.classList.add('hidden');
+    } else {
+      btnCheckAllPenerima.classList.remove('hidden');
+    }
+  }
+
+  const btnSubmitPenerima = document.getElementById('btnSubmitPenerima');
+  if (btnSubmitPenerima) {
+    if (isAdmin) {
+      btnSubmitPenerima.classList.add('hidden');
+    } else {
+      btnSubmitPenerima.classList.remove('hidden');
+    }
+  }
 
   elements.tbodyPenerima.innerHTML = displayList.map((item, idx) => {
     const existingRec = (state.receivings || []).find(r => String(r.id_sls) === String(item.id_sls));
     const isDiterima = existingRec ? (existingRec.status_diterima === 'Sudah Diterima') : false;
     const kondisi = existingRec ? (existingRec.kondisi || 'Baik') : 'Baik';
     const noBangunan = existingRec ? (existingRec.no_bangunan_terbesar || 0) : 0;
-    const ketStamp = (existingRec && isDiterima && existingRec.tgl_diterima) ? existingRec.tgl_diterima : '';
+    const ketStamp = (existingRec && isDiterima && existingRec.tgl_diterima) ? existingRec.tgl_diterima : '-';
+    const petugasNama = (existingRec && isDiterima && (existingRec.petugas_penerima || existingRec.petugas_receiving)) ? (existingRec.petugas_penerima || existingRec.petugas_receiving) : '-';
 
+    if (isAdmin) {
+      // Read-Only Admin Row
+      const kondisiBadge = kondisi === 'Baik'
+        ? '<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full"><i class="fa-solid fa-circle-check mr-1"></i>Baik</span>'
+        : kondisi === 'Hilang'
+        ? '<span class="bg-slate-200 text-slate-800 text-[10px] font-bold px-2 py-0.5 rounded-full"><i class="fa-solid fa-circle-xmark mr-1"></i>Hilang</span>'
+        : '<span class="bg-rose-100 text-rose-800 text-[10px] font-bold px-2 py-0.5 rounded-full"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Rusak</span>';
+
+      const statusBadge = isDiterima
+        ? '<span class="bg-teal-100 text-teal-900 text-[10px] font-bold px-2.5 py-1 rounded-full border border-teal-300"><i class="fa-solid fa-circle-check mr-1"></i>Sudah Diterima</span>'
+        : '<span class="bg-slate-100 text-slate-600 text-[10px] font-bold px-2.5 py-1 rounded-full">Belum Diterima</span>';
+
+      const actionBtn = isDiterima
+        ? `<button type="button" onclick="batalPenerimaSLS('${item.id_sls}')" class="bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold px-2.5 py-1 rounded-lg text-xs transition inline-flex items-center gap-1 shadow-sm" title="Batalkan Status Penerimaan">
+            <i class="fa-solid fa-ban"></i> Batal Terima
+           </button>`
+        : '<span class="text-slate-400 text-[11px] font-medium">-</span>';
+
+      return `
+        <tr class="hover:bg-slate-50 transition border-b border-slate-100 ${isDiterima ? 'bg-teal-50/20' : ''}">
+          <td class="p-3 text-center font-mono text-slate-400 text-xs">${idx + 1}</td>
+          <td class="p-3">
+            <div class="font-mono font-bold text-teal-950 text-xs">${item.id_sls}</div>
+            <div class="font-semibold text-slate-800 text-xs">${item.nama_sls}</div>
+            <div class="text-[11px] text-slate-500"><i class="fa-solid fa-user-tie mr-1 text-slate-400"></i>PPL: ${item.ppl || '-'}</div>
+          </td>
+          <td class="p-3 text-center">${kondisiBadge}</td>
+          <td class="p-3 text-center font-mono font-bold text-slate-800">${noBangunan}</td>
+          <td class="p-3 text-center">${statusBadge}</td>
+          <td class="p-3 text-center font-mono text-xs text-slate-700 font-semibold">${ketStamp}</td>
+          <td class="p-3 text-slate-800 font-semibold text-xs">${petugasNama}</td>
+          <td class="p-3 text-center">${actionBtn}</td>
+        </tr>`;
+    }
+
+    // Interactive Petugas Penerima Row
     return `
       <tr class="hover:bg-teal-50/50 transition border-b border-slate-100 ${isDiterima ? 'bg-teal-50/20' : ''}">
         <td class="p-3 text-center font-mono text-slate-400 text-xs">${idx + 1}</td>
@@ -1751,31 +1835,69 @@ function renderPenerimaMatrix(slsList) {
           </select>
         </td>
         <td class="p-3 text-center">
-          <input type="text" id="penerimaKet_${item.id_sls}" value="${ketStamp}" placeholder="Waktu & tanggal diterima..." class="w-full text-xs border border-slate-300 rounded-lg p-2 font-mono font-semibold bg-white focus:ring-2 focus:ring-teal-500">
+          <input type="text" id="penerimaKet_${item.id_sls}" value="${isDiterima ? ketStamp : ''}" placeholder="Waktu & tanggal diterima..." class="w-full text-xs border border-slate-300 rounded-lg p-2 font-mono font-semibold bg-white focus:ring-2 focus:ring-teal-500">
         </td>
       </tr>`;
   }).join('');
 
   updatePenerimaCount();
 
-  document.querySelectorAll('.chk-penerima-status').forEach(sel => {
-    sel.addEventListener('change', (e) => {
-      const slsId = e.target.dataset.idSls;
-      const inpKet = document.getElementById(`penerimaKet_${slsId}`);
+  if (!isAdmin) {
+    document.querySelectorAll('.chk-penerima-status').forEach(sel => {
+      sel.addEventListener('change', (e) => {
+        const slsId = e.target.dataset.idSls;
+        const inpKet = document.getElementById(`penerimaKet_${slsId}`);
 
-      if (e.target.value === 'Sudah Diterima') {
-        e.target.className = 'chk-penerima-status w-full text-xs font-bold border rounded-lg p-2 bg-emerald-50 text-emerald-800 border-emerald-300';
-        if (inpKet && (!inpKet.value || inpKet.value.trim() === '')) {
-          inpKet.value = getCurrentFormattedTimestamp();
+        if (e.target.value === 'Sudah Diterima') {
+          e.target.className = 'chk-penerima-status w-full text-xs font-bold border rounded-lg p-2 bg-emerald-50 text-emerald-800 border-emerald-300';
+          if (inpKet && (!inpKet.value || inpKet.value.trim() === '')) {
+            inpKet.value = getCurrentFormattedTimestamp();
+          }
+        } else {
+          e.target.className = 'chk-penerima-status w-full text-xs font-bold border rounded-lg p-2 bg-slate-50 text-slate-600 border-slate-300';
+          if (inpKet) inpKet.value = '';
         }
-      } else {
-        e.target.className = 'chk-penerima-status w-full text-xs font-bold border rounded-lg p-2 bg-slate-50 text-slate-600 border-slate-300';
-        if (inpKet) inpKet.value = '';
-      }
-      updatePenerimaCount();
+        updatePenerimaCount();
+      });
     });
-  });
+  }
 }
+
+window.batalPenerimaSLS = async function(idSls) {
+  if (!confirm(`Apakah Anda yakin ingin MEMBATALKAN status penerimaan fisik untuk SLS ${idSls}?`)) {
+    return;
+  }
+  const slsObj = (state.currentSlsList || []).find(s => String(s.id_sls) === String(idSls));
+  const items = [{
+    id_sls: String(idSls).trim(),
+    nama_sls: slsObj ? slsObj.nama_sls : '',
+    id_kecamatan: slsObj ? (slsObj.kec_id || slsObj.id_kecamatan || '') : (elements.inputPenerimaKecamatan ? elements.inputPenerimaKecamatan.value : ''),
+    id_desa: slsObj ? (slsObj.desa_id || slsObj.id_desa || '') : (elements.inputPenerimaDesa ? elements.inputPenerimaDesa.value : ''),
+    status_diterima: 'Belum Diterima',
+    tgl_diterima: '',
+    petugas_penerima: ''
+  }];
+
+  try {
+    const res = await fetch('/api/receivings/penerima-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, survey_id: state.activeSurveyId })
+    });
+    const json = await res.json();
+    if (json.success) {
+      showToast(`Penerimaan fisik SLS ${idSls} berhasil dibatalkan.`, 'info');
+      await refreshAllData();
+      if (typeof renderPenerimaMatrix === 'function' && state.currentSlsList) {
+        renderPenerimaMatrix(state.currentSlsList);
+      }
+    } else {
+      showToast(json.message || 'Gagal membatalkan penerimaan', 'error');
+    }
+  } catch (err) {
+    showToast('Terjadi kesalahan koneksi', 'error');
+  }
+};
 
 function updatePenerimaCount() {
   const statuses = document.querySelectorAll('.chk-penerima-status');
