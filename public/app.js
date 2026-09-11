@@ -3834,3 +3834,63 @@ setInterval(async () => {
   }
 }, 15000);
 
+// -------------------------------------------------------------
+// UNIVERSAL REFRESH HANDLER FOR ALL TABS
+// -------------------------------------------------------------
+window.handleRefreshGlobal = async function(tabName) {
+  const icons = document.querySelectorAll('button[onclick*="handleRefreshGlobal"] i.fa-arrows-rotate, button[onclick*="handleRefreshPenerima"] i.fa-arrows-rotate');
+  icons.forEach(ic => ic.classList.add('fa-spin'));
+
+  try {
+    if (tabName === 'users') {
+      await fetchUsers();
+    } else if (tabName === 'survey') {
+      await fetchSurveys();
+    } else {
+      await refreshAllData();
+      if (tabName === 'penerima') {
+        const selectedDesa = elements.inputPenerimaDesa ? elements.inputPenerimaDesa.value : '';
+        const selectedKec = elements.inputPenerimaKecamatan ? elements.inputPenerimaKecamatan.value : '';
+        if (selectedDesa || selectedKec) {
+          if (typeof fetchPenerimaSlsList === 'function') {
+            await fetchPenerimaSlsList(selectedDesa, selectedKec);
+          }
+        } else if (state.currentSlsList && state.currentSlsList.length > 0) {
+          if (typeof renderPenerimaMatrix === 'function') {
+            renderPenerimaMatrix(state.currentSlsList);
+          }
+        }
+      } else if (tabName === 'receiving') {
+        const selectedDesa = elements.inputDesa ? elements.inputDesa.value : '';
+        if (selectedDesa) {
+          await fetchSlsListForDesa(selectedDesa);
+        }
+      } else if (tabName === 'dashboard') {
+        if (typeof renderDashKecamatanProgressTable === 'function') {
+          renderDashKecamatanProgressTable();
+        }
+      } else if (tabName === 'daftarpeta') {
+        if (typeof renderReceivingsTable === 'function') {
+          renderReceivingsTable();
+        }
+      } else if (tabName === 'perubahansls') {
+        if (typeof renderPerubahanSlsTable === 'function') {
+          renderPerubahanSlsTable();
+        }
+      } else if (tabName === 'scanning') {
+        if (typeof renderScanningTable === 'function') {
+          renderScanningTable();
+        }
+      }
+    }
+    showToast('Data berhasil diperbarui!', 'info');
+  } catch (err) {
+    showToast('Gagal memperbarui data', 'error');
+  } finally {
+    setTimeout(() => {
+      icons.forEach(ic => ic.classList.remove('fa-spin'));
+    }, 400);
+  }
+};
+
+
