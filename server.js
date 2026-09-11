@@ -784,9 +784,10 @@ app.post('/api/receivings/penerima-bulk', async (req, res) => {
     const cleanIdSls = String(item.id_sls).trim();
     const existingIndex = db.receivings.findIndex(r => String(r.id_sls).trim() === cleanIdSls);
 
-    const statusDiterima = item.status_diterima || 'Sudah Diterima';
-    const tglDiterima = item.tgl_diterima || new Date().toISOString().split('T')[0];
-    const petugasPenerima = item.petugas_penerima || 'Nana Sumarna';
+    const isSudah = item.status_diterima === 'Sudah Diterima' || item.status_diterima === 'Ya';
+    const statusDiterima = isSudah ? 'Sudah Diterima' : 'Belum Diterima';
+    const tglDiterima = isSudah ? (item.tgl_diterima || new Date().toISOString().split('T')[0]) : '';
+    const petugasPenerima = isSudah ? (item.petugas_penerima || 'Petugas Penerima') : '';
 
     if (existingIndex !== -1) {
       db.receivings[existingIndex].status_diterima = statusDiterima;

@@ -1724,7 +1724,7 @@ function renderPenerimaMatrix(slsList) {
     const isDiterima = existingRec ? (existingRec.status_diterima === 'Sudah Diterima') : false;
     const kondisi = existingRec ? (existingRec.kondisi || 'Baik') : 'Baik';
     const noBangunan = existingRec ? (existingRec.no_bangunan_terbesar || 0) : 0;
-    const ketStamp = (existingRec && existingRec.tgl_diterima) ? existingRec.tgl_diterima : '';
+    const ketStamp = (existingRec && isDiterima && existingRec.tgl_diterima) ? existingRec.tgl_diterima : '';
 
     return `
       <tr class="hover:bg-teal-50/50 transition border-b border-slate-100 ${isDiterima ? 'bg-teal-50/20' : ''}">

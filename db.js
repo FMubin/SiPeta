@@ -149,9 +149,16 @@ async function readDB() {
       });
 
       receivings.forEach(item => {
-        if (item.status_diterima === undefined) item.status_diterima = 'Belum Diterima';
-        if (item.tgl_diterima === undefined) item.tgl_diterima = item.tgl_penerimaan || '';
-        if (item.petugas_penerima === undefined) item.petugas_penerima = item.petugas_receiving || '';
+        if (!item.status_diterima || item.status_diterima === 'Belum') {
+          item.status_diterima = 'Belum Diterima';
+        }
+        if (item.status_diterima === 'Belum Diterima') {
+          item.tgl_diterima = '';
+          item.petugas_penerima = '';
+        } else {
+          if (item.tgl_diterima === undefined) item.tgl_diterima = item.tgl_penerimaan || '';
+          if (item.petugas_penerima === undefined) item.petugas_penerima = item.petugas_receiving || '';
+        }
         if (item.status_scan === undefined) item.status_scan = 'Tidak';
         if (item.petugas_scan === undefined) item.petugas_scan = '';
         if (item.tgl_scan === undefined) item.tgl_scan = '';
@@ -203,9 +210,16 @@ async function readDB() {
     }
 
     (db.receivings || []).forEach(item => {
-      if (item.status_diterima === undefined) item.status_diterima = 'Belum Diterima';
-      if (item.tgl_diterima === undefined) item.tgl_diterima = item.tgl_penerimaan || '';
-      if (item.petugas_penerima === undefined) item.petugas_penerima = item.petugas_receiving || '';
+      if (!item.status_diterima || item.status_diterima === 'Belum') {
+        item.status_diterima = 'Belum Diterima';
+      }
+      if (item.status_diterima === 'Belum Diterima') {
+        item.tgl_diterima = '';
+        item.petugas_penerima = '';
+      } else {
+        if (item.tgl_diterima === undefined) item.tgl_diterima = item.tgl_penerimaan || '';
+        if (item.petugas_penerima === undefined) item.petugas_penerima = item.petugas_receiving || '';
+      }
       if (item.status_scan === undefined) item.status_scan = 'Tidak';
       if (item.petugas_scan === undefined) item.petugas_scan = '';
       if (item.tgl_scan === undefined) item.tgl_scan = '';
