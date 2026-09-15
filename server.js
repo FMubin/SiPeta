@@ -816,7 +816,7 @@ app.post('/api/receivings/penerima-bulk', async (req, res) => {
       });
       countUpdated++;
     } else {
-      const newId = 'REC-' + Date.now().toString().slice(-6) + Math.floor(Math.random() * 1000);
+      const newId = 'REC-' + cleanIdSls14;
       const cleanKondisi = (item.kondisi === 'Baik' || item.kondisi === 'Rusak' || item.kondisi === 'Hilang') ? item.kondisi : 'Baik';
       const newRecord = {
         id: newId,

@@ -170,6 +170,7 @@ async function readDB() {
           if (!Array.isArray(u.assigned_surveys)) u.assigned_surveys = [];
         });
 
+        const receivingsMap = new Map();
         receivings.forEach(item => {
           if (!item.status_diterima || item.status_diterima === 'Belum') {
             item.status_diterima = 'Belum Diterima';
@@ -186,7 +187,25 @@ async function readDB() {
           if (item.tgl_scan === undefined) item.tgl_scan = '';
           if (item.petugas_receiving === undefined) item.petugas_receiving = '';
           if (item.survey_id === undefined) item.survey_id = 'srv-sensus-14utp';
+
+          const key = String(item.id_sls || item.no_peta || '').trim().slice(0, 14);
+          if (!key) return;
+
+          const existing = receivingsMap.get(key);
+          if (!existing) {
+            receivingsMap.set(key, item);
+          } else {
+            if (item.status_diterima === 'Sudah Diterima' && existing.status_diterima !== 'Sudah Diterima') {
+              receivingsMap.set(key, item);
+            } else if (item.status_diterima === existing.status_diterima) {
+              if ((item.tgl_diterima && !existing.tgl_diterima) ||
+                  (item.created_at && existing.created_at && new Date(item.created_at) > new Date(existing.created_at))) {
+                receivingsMap.set(key, item);
+              }
+            }
+          }
         });
+        receivings = Array.from(receivingsMap.values());
 
         cacheDB = {
           users,
@@ -243,6 +262,7 @@ async function readDB() {
       db.surveys = [...defaultSurveys];
     }
 
+    const localReceivingsMap = new Map();
     (db.receivings || []).forEach(item => {
       if (!item.status_diterima || item.status_diterima === 'Belum') {
         item.status_diterima = 'Belum Diterima';
@@ -259,7 +279,25 @@ async function readDB() {
       if (item.tgl_scan === undefined) item.tgl_scan = '';
       if (item.petugas_receiving === undefined) item.petugas_receiving = '';
       if (item.survey_id === undefined) item.survey_id = 'srv-sensus-14utp';
+
+      const key = String(item.id_sls || item.no_peta || '').trim().slice(0, 14);
+      if (!key) return;
+
+      const existing = localReceivingsMap.get(key);
+      if (!existing) {
+        localReceivingsMap.set(key, item);
+      } else {
+        if (item.status_diterima === 'Sudah Diterima' && existing.status_diterima !== 'Sudah Diterima') {
+          localReceivingsMap.set(key, item);
+        } else if (item.status_diterima === existing.status_diterima) {
+          if ((item.tgl_diterima && !existing.tgl_diterima) ||
+              (item.created_at && existing.created_at && new Date(item.created_at) > new Date(existing.created_at))) {
+            localReceivingsMap.set(key, item);
+          }
+        }
+      }
     });
+    db.receivings = Array.from(localReceivingsMap.values());
 
     cacheDB = db;
     return db;
