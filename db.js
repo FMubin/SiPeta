@@ -108,13 +108,32 @@ function initDBLocal() {
 
 let cacheDB = null;
 
+async function fetchAllReceivingsFromSupabase() {
+  let all = [];
+  let from = 0;
+  const step = 1000;
+  while (true) {
+    const { data, error } = await supabase.from('receivings').select('*').range(from, from + step - 1);
+    if (error) {
+      console.error('❌ Supabase receivings select error:', error.message || error);
+      if (all.length > 0) return { data: all, error: null };
+      return { data: null, error };
+    }
+    if (!data || data.length === 0) break;
+    all.push(...data);
+    if (data.length < step) break;
+    from += step;
+  }
+  return { data: all, error: null };
+}
+
 async function readDB() {
   if (isSupabaseEnabled && supabase) {
     try {
       const [usersRes, surveysRes, receivingsRes] = await Promise.all([
         supabase.from('users').select('*'),
         supabase.from('surveys').select('*'),
-        supabase.from('receivings').select('*').limit(10000)
+        fetchAllReceivingsFromSupabase()
       ]);
 
       if (!usersRes.error && !surveysRes.error && !receivingsRes.error) {
