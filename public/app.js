@@ -1143,32 +1143,36 @@ function getAvailableDesaList(selectedKecId = '') {
   return filteredDesa;
 }
 
+function getReceivingForSls(idSls) {
+  if (!idSls || !state.receivings) return null;
+  const target = String(idSls).trim();
+  const target14 = target.slice(0, 14);
+  return state.receivings.find(r => {
+    const rId = String(r.id_sls || r.no_peta || '').trim();
+    if (rId === target) return true;
+    if (rId.length >= 14 && target14.length >= 14 && rId.slice(0, 14) === target14) return true;
+    return false;
+  }) || null;
+}
+
 function getBaseSlsListForUser() {
   const user = state.currentUser;
   let allSlsSource = (state.allMasterSls && state.allMasterSls.length > 0) ? state.allMasterSls : [];
 
-  // Filter by Active Survey if active survey is a survei type with sample_sls
   if (state.activeSurveyId) {
     const surveyObj = (state.surveys || []).find(s => s.id === state.activeSurveyId);
     if (surveyObj && surveyObj.jenis === 'survei' && Array.isArray(surveyObj.sample_sls) && surveyObj.sample_sls.length > 0) {
-      const sampleMap = new Map(surveyObj.sample_sls.map(s => [String(s.id_sls || s).trim(), s]));
-      allSlsSource = allSlsSource.filter(item => sampleMap.has(String(item.id_sls).trim()));
+      const sampleSet = new Set(surveyObj.sample_sls.map(s => String(s.id_sls || s).trim().slice(0, 14)));
+      allSlsSource = allSlsSource.filter(item => sampleSet.has(String(item.id_sls).trim().slice(0, 14)));
     }
   }
 
-  // Create lookup map of existing saved receivings
-  const recMap = new Map();
-  (state.receivings || []).forEach(r => {
-    if (r.id_sls) recMap.set(String(r.id_sls).trim(), r);
-  });
-
-  // Combine master SLS with receiving data (or create default empty state for uninput items)
   let list = [];
 
   if (allSlsSource.length > 0) {
     list = allSlsSource.map(sls => {
       const cleanId = String(sls.id_sls).trim();
-      const rec = recMap.get(cleanId);
+      const rec = getReceivingForSls(cleanId);
       if (rec) {
         return {
           ...sls,
@@ -1418,8 +1422,8 @@ function getActualReceivingsForUser() {
   if (state.activeSurveyId) {
     const surveyObj = (state.surveys || []).find(s => s.id === state.activeSurveyId);
     if (surveyObj && surveyObj.jenis === 'survei' && Array.isArray(surveyObj.sample_sls) && surveyObj.sample_sls.length > 0) {
-      const sampleSet = new Set(surveyObj.sample_sls.map(s => String(s.id_sls || s).trim()));
-      list = list.filter(item => sampleSet.has(String(item.id_sls).trim()));
+      const sampleSet = new Set(surveyObj.sample_sls.map(s => String(s.id_sls || s).trim().slice(0, 14)));
+      list = list.filter(item => sampleSet.has(String(item.id_sls).trim().slice(0, 14)));
     }
   }
 
@@ -1676,7 +1680,7 @@ function renderBulkSlsTable() {
 
   elements.tbodyBulkSls.innerHTML = slsList.map((item, idx) => {
     // Check if this SLS already has a saved receiving record in DB
-    const existingRec = state.receivings.find(r => String(r.id_sls) === String(item.id_sls));
+    const existingRec = getReceivingForSls(item.id_sls);
     
     const defaultKondisi = existingRec ? existingRec.kondisi : 'Baik';
     const defaultBangunan = existingRec ? existingRec.no_bangunan_terbesar : 0;
@@ -1876,7 +1880,7 @@ function renderPenerimaMatrix(slsList) {
   }
 
   elements.tbodyPenerima.innerHTML = displayList.map((item, idx) => {
-    const existingRec = (state.receivings || []).find(r => String(r.id_sls) === String(item.id_sls));
+    const existingRec = getReceivingForSls(item.id_sls);
     const isDiterima = existingRec ? (existingRec.status_diterima === 'Sudah Diterima') : false;
     const kondisi = existingRec ? (existingRec.kondisi || 'Baik') : 'Baik';
     const noBangunan = existingRec ? (existingRec.no_bangunan_terbesar || 0) : 0;
@@ -2010,10 +2014,9 @@ window.batalPenerimaSLS = async function(idSls) {
 
 window.batalAllPenerimaAdmin = async function() {
   const currentList = state.currentSlsList || [];
-  const recMap = new Map((state.receivings || []).map(r => [String(r.id_sls).trim(), r]));
 
   const itemsToCancel = currentList.filter(item => {
-    const rec = recMap.get(String(item.id_sls).trim());
+    const rec = getReceivingForSls(item.id_sls);
     return rec && rec.status_diterima === 'Sudah Diterima';
   });
 
@@ -3814,7 +3817,7 @@ window.batalScanSLS = async function(idSlsOrId) {
   if (!confirm(`Apakah Anda yakin ingin MEMBATALKAN status scanning untuk SLS ini?`)) {
     return;
   }
-  const item = (state.receivings || []).find(r => String(r.id_sls) === String(idSlsOrId) || String(r.id) === String(idSlsOrId));
+  const item = getReceivingForSls(idSlsOrId) || (state.receivings || []).find(r => String(r.id) === String(idSlsOrId));
   if (!item) {
     showToast('Data receiving SLS belum ditemukan untuk dibatalkan', 'error');
     return;
