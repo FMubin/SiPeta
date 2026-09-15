@@ -239,17 +239,39 @@ async function readDB() {
   }
 }
 
-async function writeDB(data) {
+async function writeDB(data, targetItems = null, targetTable = null) {
   if (isSupabaseEnabled && supabase) {
     try {
-      if (data.users && data.users.length > 0) {
-        await supabase.from('users').upsert(data.users, { onConflict: 'id' });
-      }
-      if (data.surveys && data.surveys.length > 0) {
-        await supabase.from('surveys').upsert(data.surveys, { onConflict: 'id' });
-      }
-      if (data.receivings && data.receivings.length > 0) {
-        await supabase.from('receivings').upsert(data.receivings, { onConflict: 'id' });
+      if (targetTable === 'users' && targetItems && targetItems.length > 0) {
+        const { error } = await supabase.from('users').upsert(targetItems, { onConflict: 'id' });
+        if (error) console.error('❌ Supabase users upsert error:', error.message || error);
+      } else if (targetTable === 'receivings' && targetItems && targetItems.length > 0) {
+        const BATCH_SIZE = 200;
+        for (let i = 0; i < targetItems.length; i += BATCH_SIZE) {
+          const chunk = targetItems.slice(i, i + BATCH_SIZE);
+          const { error } = await supabase.from('receivings').upsert(chunk, { onConflict: 'id' });
+          if (error) console.error('❌ Supabase receivings upsert error:', error.message || error);
+        }
+      } else if (targetTable === 'surveys' && targetItems && targetItems.length > 0) {
+        const { error } = await supabase.from('surveys').upsert(targetItems, { onConflict: 'id' });
+        if (error) console.error('❌ Supabase surveys upsert error:', error.message || error);
+      } else {
+        if (data.users && data.users.length > 0) {
+          const { error } = await supabase.from('users').upsert(data.users, { onConflict: 'id' });
+          if (error) console.error('❌ Supabase users full upsert error:', error.message || error);
+        }
+        if (data.surveys && data.surveys.length > 0) {
+          const { error } = await supabase.from('surveys').upsert(data.surveys, { onConflict: 'id' });
+          if (error) console.error('❌ Supabase surveys full upsert error:', error.message || error);
+        }
+        if (data.receivings && data.receivings.length > 0) {
+          const BATCH_SIZE = 200;
+          for (let i = 0; i < data.receivings.length; i += BATCH_SIZE) {
+            const chunk = data.receivings.slice(i, i + BATCH_SIZE);
+            const { error } = await supabase.from('receivings').upsert(chunk, { onConflict: 'id' });
+            if (error) console.error('❌ Supabase receivings full upsert error:', error.message || error);
+          }
+        }
       }
     } catch (err) {
       console.error('Error writing to Supabase:', err);

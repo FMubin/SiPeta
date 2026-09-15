@@ -63,8 +63,8 @@ app.post('/api/users', async (req, res) => {
   }
 
   let cleanRole = role.toLowerCase().trim();
-  if (requester_role === 'admin' && (cleanRole === 'admin' || cleanRole === 'superadmin')) {
-    return res.status(403).json({ success: false, message: 'Admin hanya diperbolehkan membuat akun Petugas Entry dan Petugas Scan.' });
+  if (requester_role === 'admin' && cleanRole === 'superadmin') {
+    return res.status(403).json({ success: false, message: 'Admin tidak diperbolehkan membuat akun Super Admin.' });
   }
 
   const db = await readDB();
@@ -83,7 +83,7 @@ app.post('/api/users', async (req, res) => {
   };
 
   db.users.push(newUser);
-  await writeDB(db);
+  await writeDB(db, [newUser], 'users');
 
   res.status(201).json({
     success: true,
@@ -101,8 +101,8 @@ app.put('/api/users/:id', async (req, res) => {
 
   const { nama, username, password, role, assigned_kec, assigned_surveys, requester_role } = req.body;
 
-  if (requester_role === 'admin' && (user.role === 'admin' || user.role === 'superadmin')) {
-    return res.status(403).json({ success: false, message: 'Admin tidak dapat mengubah akun Super Admin atau sesama Admin.' });
+  if (requester_role === 'admin' && user.role === 'superadmin') {
+    return res.status(403).json({ success: false, message: 'Admin tidak dapat mengubah akun Super Admin.' });
   }
 
   if (username && username.trim().toLowerCase() !== user.username.toLowerCase()) {
@@ -116,8 +116,8 @@ app.put('/api/users/:id', async (req, res) => {
   if (nama && nama.trim()) user.nama = nama.trim();
   if (role) {
     let cleanRole = role.toLowerCase().trim();
-    if (requester_role === 'admin' && (cleanRole === 'admin' || cleanRole === 'superadmin')) {
-      return res.status(403).json({ success: false, message: 'Admin hanya dapat menetapkan role Petugas Entry dan Scan.' });
+    if (requester_role === 'admin' && cleanRole === 'superadmin') {
+      return res.status(403).json({ success: false, message: 'Admin tidak dapat menetapkan role Super Admin.' });
     }
     user.role = cleanRole;
   }
@@ -131,7 +131,7 @@ app.put('/api/users/:id', async (req, res) => {
     user.assigned_surveys = assigned_surveys.map(String);
   }
 
-  await writeDB(db);
+  await writeDB(db, [user], 'users');
 
   res.json({
     success: true,
@@ -154,7 +154,7 @@ app.put('/api/users/:id/allocation', async (req, res) => {
   if (Array.isArray(assigned_surveys)) {
     user.assigned_surveys = assigned_surveys.map(String);
   }
-  await writeDB(db);
+  await writeDB(db, [user], 'users');
 
   res.json({
     success: true,
@@ -404,7 +404,7 @@ app.post('/api/surveys', async (req, res) => {
   };
 
   db.surveys.push(newSurvey);
-  await writeDB(db);
+  await writeDB(db, [newSurvey], 'surveys');
 
   res.status(201).json({
     success: true,
@@ -426,7 +426,7 @@ app.put('/api/surveys/:id', async (req, res) => {
   if (tahun) survey.tahun = String(tahun);
   if (status) survey.status = status;
 
-  await writeDB(db);
+  await writeDB(db, [survey], 'surveys');
 
   res.json({
     success: true,
@@ -450,28 +450,20 @@ app.post('/api/surveys/:id/upload-sample', async (req, res) => {
   survey.jenis = 'survei';
   survey.sample_sls = sample_sls.map(item => {
     if (typeof item === 'object' && item !== null) {
-      const cleanId = String(item.id_sls || '').trim();
       return {
-        id_sls: cleanId,
-        nama_sls: String(item.nama_sls || '').trim(),
-        kec_id: item.kec_id ? String(item.kec_id) : (cleanId.length >= 7 ? cleanId.slice(0, 7) : ''),
-        desa_id: item.desa_id ? String(item.desa_id) : (cleanId.length >= 10 ? cleanId.slice(0, 10) : ''),
-        ppl: String(item.ppl || item.nama_petugas || item.petugas || '').trim(),
-        no_hp: String(item.no_hp || item.no_telp || item.telp || '').trim()
+        id_sls: String(item.id_sls || item.id || '').trim(),
+        nama_sls: String(item.nama_sls || item.nama || '').trim(),
+        kode_kec: String(item.kode_kec || item.id_kecamatan || '').trim(),
+        nama_kec: String(item.nama_kec || '').trim(),
+        kode_desa: String(item.kode_desa || item.id_desa || '').trim(),
+        nama_desa: String(item.nama_desa || '').trim(),
+        nama_pcl: String(item.nama_pcl || item.pcl || '').trim(),
       };
     }
-    const cleanId = String(item).trim();
-    return {
-      id_sls: cleanId,
-      nama_sls: '',
-      kec_id: cleanId.length >= 7 ? cleanId.slice(0, 7) : '',
-      desa_id: cleanId.length >= 10 ? cleanId.slice(0, 10) : '',
-      ppl: '',
-      no_hp: ''
-    };
+    return { id_sls: String(item).trim(), nama_sls: '' };
   }).filter(s => s.id_sls);
 
-  await writeDB(db);
+  await writeDB(db, [survey], 'surveys');
 
   res.json({
     success: true,
@@ -695,7 +687,7 @@ app.post('/api/receivings', async (req, res) => {
   };
 
   db.receivings.unshift(newRecord);
-  await writeDB(db);
+  await writeDB(db, [newRecord], 'receivings');
 
   res.status(201).json({ success: true, message: 'Penerimaan Peta berhasil dicatat.', data: newRecord });
 });
@@ -758,7 +750,7 @@ app.post('/api/receivings/bulk', async (req, res) => {
     addedCount++;
   });
 
-  await writeDB(db);
+  await writeDB(db, createdRecords, 'receivings');
 
   res.status(201).json({
     success: true,
@@ -778,6 +770,7 @@ app.post('/api/receivings/penerima-bulk', async (req, res) => {
 
   let countCreated = 0;
   let countUpdated = 0;
+  const recordsToSave = [];
 
   items.forEach(item => {
     if (!item.id_sls) return;
@@ -805,6 +798,7 @@ app.post('/api/receivings/penerima-bulk', async (req, res) => {
         if (item.no_bangunan_terbesar !== undefined) {
           db.receivings[idx].no_bangunan_terbesar = Number(item.no_bangunan_terbesar) || 0;
         }
+        recordsToSave.push(db.receivings[idx]);
       });
       countUpdated++;
     } else {
@@ -835,11 +829,12 @@ app.post('/api/receivings/penerima-bulk', async (req, res) => {
         created_at: new Date().toISOString()
       };
       db.receivings.unshift(newRecord);
+      recordsToSave.push(newRecord);
       countCreated++;
     }
   });
 
-  await writeDB(db);
+  await writeDB(db, recordsToSave, 'receivings');
 
   res.json({
     success: true,
@@ -895,7 +890,7 @@ app.put('/api/receivings/:id', async (req, res) => {
     record.kualitas_jaringan = (kualitas_jaringan === 'Kuat' || kualitas_jaringan === 'Sedang' || kualitas_jaringan === 'Lemah') ? kualitas_jaringan : 'Kuat';
   }
 
-  await writeDB(db);
+  await writeDB(db, [record], 'receivings');
 
   res.json({
     success: true,
@@ -930,7 +925,7 @@ app.put('/api/receivings/:id/scan', async (req, res) => {
     db.receivings[index].tgl_scan = '';
   }
 
-  await writeDB(db);
+  await writeDB(db, [db.receivings[index]], 'receivings');
 
   res.json({
     success: true,
