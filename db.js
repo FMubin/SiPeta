@@ -106,6 +106,8 @@ function initDBLocal() {
   }
 }
 
+let cacheDB = null;
+
 async function readDB() {
   if (isSupabaseEnabled && supabase) {
     try {
@@ -115,66 +117,78 @@ async function readDB() {
         supabase.from('receivings').select('*').limit(10000)
       ]);
 
-      let users = usersRes.data || [];
-      let surveys = surveysRes.data || [];
-      let receivings = receivingsRes.data || [];
+      if (!usersRes.error && !surveysRes.error && !receivingsRes.error) {
+        let users = usersRes.data || [];
+        let surveys = surveysRes.data || [];
+        let receivings = receivingsRes.data || [];
 
-      if (users.length === 0) {
-        users = [...defaultUsers];
-        await supabase.from('users').upsert(defaultUsers);
-      }
-      if (surveys.length === 0) {
-        surveys = [...defaultSurveys];
-        await supabase.from('surveys').upsert(defaultSurveys);
-      }
-
-      if (!users.some(u => u.username === 'superadmin')) {
-        users.unshift(defaultUsers[0]);
-        await supabase.from('users').upsert([defaultUsers[0]]);
-      }
-      if (!users.some(u => u.username === 'nana')) {
-        users.push(defaultUsers[4]);
-        await supabase.from('users').upsert([defaultUsers[4]]);
-      }
-      if (!users.some(u => u.username === 'juniar')) {
-        users.push(defaultUsers[5]);
-        await supabase.from('users').upsert([defaultUsers[5]]);
-      }
-
-      users.forEach(u => {
-        u.username = String(u.username || '').trim();
-        u.password = String(u.password || '').trim();
-        if (!Array.isArray(u.assigned_kec)) u.assigned_kec = [];
-        if (!Array.isArray(u.assigned_surveys)) u.assigned_surveys = [];
-      });
-
-      receivings.forEach(item => {
-        if (!item.status_diterima || item.status_diterima === 'Belum') {
-          item.status_diterima = 'Belum Diterima';
+        if (users.length === 0) {
+          users = [...defaultUsers];
+          await supabase.from('users').upsert(defaultUsers);
         }
-        if (item.status_diterima === 'Belum Diterima') {
-          item.tgl_diterima = '';
-          item.petugas_penerima = '';
-        } else {
-          if (item.tgl_diterima === undefined) item.tgl_diterima = item.tgl_penerimaan || '';
-          if (item.petugas_penerima === undefined) item.petugas_penerima = item.petugas_receiving || '';
+        if (surveys.length === 0) {
+          surveys = [...defaultSurveys];
+          await supabase.from('surveys').upsert(defaultSurveys);
         }
-        if (item.status_scan === undefined) item.status_scan = 'Tidak';
-        if (item.petugas_scan === undefined) item.petugas_scan = '';
-        if (item.tgl_scan === undefined) item.tgl_scan = '';
-        if (item.petugas_receiving === undefined) item.petugas_receiving = '';
-        if (item.survey_id === undefined) item.survey_id = 'srv-sensus-14utp';
-      });
 
-      return {
-        users,
-        surveys,
-        receivings,
-        master: getMasterUtp()
-      };
+        if (!users.some(u => u.username === 'superadmin')) {
+          users.unshift(defaultUsers[0]);
+          await supabase.from('users').upsert([defaultUsers[0]]);
+        }
+        if (!users.some(u => u.username === 'nana')) {
+          users.push(defaultUsers[4]);
+          await supabase.from('users').upsert([defaultUsers[4]]);
+        }
+        if (!users.some(u => u.username === 'juniar')) {
+          users.push(defaultUsers[5]);
+          await supabase.from('users').upsert([defaultUsers[5]]);
+        }
+
+        users.forEach(u => {
+          u.username = String(u.username || '').trim();
+          u.password = String(u.password || '').trim();
+          if (!Array.isArray(u.assigned_kec)) u.assigned_kec = [];
+          if (!Array.isArray(u.assigned_surveys)) u.assigned_surveys = [];
+        });
+
+        receivings.forEach(item => {
+          if (!item.status_diterima || item.status_diterima === 'Belum') {
+            item.status_diterima = 'Belum Diterima';
+          }
+          if (item.status_diterima === 'Belum Diterima') {
+            item.tgl_diterima = '';
+            item.petugas_penerima = '';
+          } else {
+            if (item.tgl_diterima === undefined) item.tgl_diterima = item.tgl_penerimaan || '';
+            if (item.petugas_penerima === undefined) item.petugas_penerima = item.petugas_receiving || '';
+          }
+          if (item.status_scan === undefined) item.status_scan = 'Tidak';
+          if (item.petugas_scan === undefined) item.petugas_scan = '';
+          if (item.tgl_scan === undefined) item.tgl_scan = '';
+          if (item.petugas_receiving === undefined) item.petugas_receiving = '';
+          if (item.survey_id === undefined) item.survey_id = 'srv-sensus-14utp';
+        });
+
+        cacheDB = {
+          users,
+          surveys,
+          receivings,
+          master: getMasterUtp(),
+          isSupabaseEnabled: true
+        };
+        return cacheDB;
+      } else {
+        console.error('⚠️ Supabase select query returned error:', usersRes.error || surveysRes.error || receivingsRes.error);
+      }
     } catch (err) {
       console.error('Error querying Supabase, falling back to local file storage:', err);
     }
+  }
+
+  // If memory cache exists, return it!
+  if (cacheDB) {
+    cacheDB.master = getMasterUtp();
+    return cacheDB;
   }
 
   // Local JSON fallback
@@ -183,9 +197,10 @@ async function readDB() {
     const content = fs.readFileSync(DB_FILE, 'utf-8');
     const db = JSON.parse(content);
     db.master = getMasterUtp();
+    db.isSupabaseEnabled = false;
     
     if (!db.users || db.users.length === 0) {
-      db.users = defaultUsers;
+      db.users = [...defaultUsers];
     }
 
     if (!db.users.some(u => u.username === 'superadmin')) {
@@ -206,7 +221,7 @@ async function readDB() {
     });
 
     if (!Array.isArray(db.surveys) || db.surveys.length === 0) {
-      db.surveys = defaultSurveys;
+      db.surveys = [...defaultSurveys];
     }
 
     (db.receivings || []).forEach(item => {
@@ -227,19 +242,24 @@ async function readDB() {
       if (item.survey_id === undefined) item.survey_id = 'srv-sensus-14utp';
     });
 
+    cacheDB = db;
     return db;
   } catch (err) {
     console.error('Error reading local DB, re-initializing...', err);
     initDBLocal();
     const db = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
     db.master = getMasterUtp();
-    db.users = defaultUsers;
-    db.surveys = defaultSurveys;
+    db.users = [...defaultUsers];
+    db.surveys = [...defaultSurveys];
+    db.isSupabaseEnabled = false;
+    cacheDB = db;
     return db;
   }
 }
 
 async function writeDB(data, targetItems = null, targetTable = null) {
+  cacheDB = data; // Keep process memory cache updated instantly
+
   if (isSupabaseEnabled && supabase) {
     try {
       if (targetTable === 'users' && targetItems && targetItems.length > 0) {

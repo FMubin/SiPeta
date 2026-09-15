@@ -12,6 +12,18 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/api/health', async (req, res) => {
+  const db = await readDB();
+  res.json({
+    status: 'ok',
+    isSupabaseEnabled: db.isSupabaseEnabled || false,
+    usersCount: (db.users || []).length,
+    receivingsCount: (db.receivings || []).length,
+    surveysCount: (db.surveys || []).length,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // 0. AUTH & USER MANAGEMENT ENDPOINTS
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
@@ -780,9 +792,11 @@ app.post('/api/receivings/penerima-bulk', async (req, res) => {
     const tglDiterima = isSudah ? (item.tgl_diterima || new Date().toISOString().split('T')[0]) : '';
     const petugasPenerima = isSudah ? (item.petugas_penerima || 'Petugas Penerima') : '';
 
+    const cleanIdSls14 = cleanIdSls.slice(0, 14);
     const matchingIndices = [];
     db.receivings.forEach((r, idx) => {
-      if (String(r.id_sls).trim() === cleanIdSls) {
+      const rId = String(r.id_sls || '').trim();
+      if (rId === cleanIdSls || (rId.length >= 14 && cleanIdSls.length >= 14 && rId.slice(0, 14) === cleanIdSls14)) {
         matchingIndices.push(idx);
       }
     });
